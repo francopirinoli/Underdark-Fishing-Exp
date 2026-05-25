@@ -1,0 +1,192 @@
+/**
+ * js/exploration/map_renderer.js
+ * Takes the raw data from global_map and local_map and paints them to Canvas.
+ */
+
+import { TILE } from './local_map.js';
+
+export function renderGlobalMap(canvas, globalMap, biomes, selectedNode, incompleteQuests = [], completeQuests = [], weatherNodes = {}, tournamentNodes = {}) {
+    const ctx = canvas.getContext('2d');
+    const tileW = canvas.width / globalMap.width;
+    const tileH = canvas.height / globalMap.height;
+    
+    const incompleteNodes = new Set();
+    incompleteQuests.forEach(q => {
+        if (q.targetNode) incompleteNodes.add(`${q.targetNode.x},${q.targetNode.y}`);
+    });
+
+    const completeNodes = new Set();
+    completeQuests.forEach(q => {
+        const node = q.turnInNode || q.targetNode; // fallback for older saves
+        if (node) completeNodes.add(`${node.x},${node.y}`);
+    });
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Pass 1: Backgrounds, Fog of War, & Tint Overlays
+    for (let y = 0; y < globalMap.height; y++) {
+        for (let x = 0; x < globalMap.width; x++) {
+            const node = globalMap.nodes[y][x];
+            const isCompleteTarget = completeNodes.has(`${x},${y}`);
+            const isIncompleteTarget = incompleteNodes.has(`${x},${y}`);
+            const hasWeather = weatherNodes[`${x},${y}`];
+            const hasTournament = tournamentNodes[`${x},${y}`];
+            
+            if (node.isDiscovered) {
+                ctx.fillStyle = biomes[node.biomeId].globalColor;
+            } else {
+                ctx.fillStyle = '#000000';
+            }
+            ctx.fillRect(x * tileW, y * tileH, tileW, tileH);
+            
+            if (node.isDiscovered && hasWeather) {
+                ctx.fillStyle = 'rgba(239, 68, 68, 0.25)'; // Red tint
+                ctx.fillRect(x * tileW, y * tileH, tileW, tileH);
+            }
+
+            if (node.isDiscovered && hasTournament && !hasTournament.isFinished) {
+                ctx.fillStyle = 'rgba(251, 191, 36, 0.15)'; // Gold tint
+                ctx.fillRect(x * tileW, y * tileH, tileW, tileH);
+            }
+            
+            if (isCompleteTarget) {
+                ctx.strokeStyle = 'rgba(34, 197, 94, 0.8)'; // Green border
+                ctx.lineWidth = 2;
+                ctx.strokeRect(x * tileW + 1, y * tileH + 1, tileW - 2, tileH - 2);
+            } else if (isIncompleteTarget) {
+                ctx.strokeStyle = 'rgba(251, 191, 36, 0.8)'; // Yellow border
+                ctx.lineWidth = 2;
+                ctx.strokeRect(x * tileW + 1, y * tileH + 1, tileW - 2, tileH - 2);
+            } else {
+                ctx.strokeStyle = 'rgba(2, 6, 23, 0.4)'; 
+                ctx.lineWidth = 1;
+                ctx.strokeRect(x * tileW, y * tileH, tileW, tileH);
+            }
+        }
+    }
+    
+    // Pass 2: Exits, Settlements & Icons
+    ctx.lineWidth = 2;
+    for (let y = 0; y < globalMap.height; y++) {
+        for (let x = 0; x < globalMap.width; x++) {
+            const node = globalMap.nodes[y][x];
+            const cx = x * tileW + tileW / 2;
+            const cy = y * tileH + tileH / 2;
+            const isCompleteTarget = completeNodes.has(`${x},${y}`);
+            const isIncompleteTarget = incompleteNodes.has(`${x},${y}`);
+            const hasWeather = weatherNodes[`${x},${y}`];
+            const hasTournament = tournamentNodes[`${x},${y}`];
+            
+            if (node.isDiscovered) {
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+                ctx.beginPath();
+                if (node.exits.n) { ctx.moveTo(cx, cy); ctx.lineTo(cx, cy - tileH / 2); }
+                if (node.exits.s) { ctx.moveTo(cx, cy); ctx.lineTo(cx, cy + tileH / 2); }
+                if (node.exits.w) { ctx.moveTo(cx, cy); ctx.lineTo(cx - tileW / 2, cy); }
+                if (node.exits.e) { ctx.moveTo(cx, cy); ctx.lineTo(cx + tileW / 2, cy); }
+                ctx.stroke();
+
+                if (node.hasSettlement) {
+                    ctx.fillStyle = '#FBBF24'; 
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, tileW * 0.25, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+
+                if (hasWeather) {
+                    ctx.fillStyle = '#EF4444';
+                    ctx.font = `bold ${tileH * 0.4}px "Courier New", monospace`;
+                    ctx.textAlign = 'left';
+                    ctx.textBaseline = 'top';
+                    ctx.fillText('⚠', x * tileW + 2, y * tileH + 2);
+                }
+
+                if (hasTournament && !hasTournament.isFinished) {
+                    ctx.fillStyle = '#FBBF24';
+                    ctx.font = `${tileH * 0.45}px "Courier New", monospace`;
+                    ctx.textAlign = 'left';
+                    ctx.textBaseline = 'bottom';
+                    ctx.fillText('🏆', x * tileW + 2, y * tileH + tileH - 2);
+                }
+
+                // --- NEW: Green Checkmark for Ready Quests ---
+                if (isCompleteTarget) {
+                    ctx.fillStyle = '#22C55E';
+                    ctx.font = `bold ${tileH * 0.5}px "Courier New", monospace`;
+                    ctx.textAlign = 'right';
+                    ctx.textBaseline = 'top';
+                    ctx.fillText('✓', x * tileW + tileW - 4, y * tileH + 4);
+                } else if (isIncompleteTarget) {
+                    ctx.fillStyle = '#FBBF24';
+                    ctx.font = `bold ${tileH * 0.5}px "Courier New", monospace`;
+                    ctx.textAlign = 'right';
+                    ctx.textBaseline = 'top';
+                    ctx.fillText('!', x * tileW + tileW - 4, y * tileH + 4);
+                }
+            } else {
+                if (isCompleteTarget) {
+                    ctx.fillStyle = '#22C55E';
+                    ctx.font = `bold ${tileH * 0.6}px "Courier New", monospace`; 
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText('✓', cx, cy + 2);
+                } else if (isIncompleteTarget) {
+                    ctx.fillStyle = '#FBBF24';
+                    ctx.font = `bold ${tileH * 0.6}px "Courier New", monospace`; 
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText('!', cx, cy + 2);
+                } else {
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+                    ctx.font = `${tileH * 0.6}px "Courier New", monospace`; 
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText('?', cx, cy + 2); 
+                }
+            }
+        }
+    }
+    
+    if (selectedNode) {
+        ctx.strokeStyle = '#22D3EE'; 
+        ctx.lineWidth = 3;
+        ctx.strokeRect(selectedNode.x * tileW, selectedNode.y * tileH, tileW, tileH);
+    }
+}
+
+// Helper: Converts hex color strings into RGB array for byte-level injection
+function hexToRgb(hex) {
+    const bigint = parseInt(hex.replace('#', ''), 16);
+    return[(bigint >> 16) & 255, (bigint >> 8) & 255, bigint & 255];
+}
+
+export function renderLocalMap(canvas, localMap, biome) {
+    const ctx = canvas.getContext('2d');
+    const w = localMap.width;
+    const h = localMap.height;
+    
+    if (canvas.width !== w || canvas.height !== h) {
+        canvas.width = w;
+        canvas.height = h;
+    }
+
+    const imgData = ctx.createImageData(w, h);
+    const data = imgData.data;
+    
+    const pal = biome.palette;
+    const colors = {
+        [TILE.WATER]: hexToRgb(pal.water),[TILE.DEEP_WATER]: hexToRgb(pal.deepWater),
+        [TILE.LAND]: hexToRgb(pal.land), [TILE.ROCK]: hexToRgb(pal.rock),[TILE.FLORA]: hexToRgb(pal.flora), [TILE.DOCK]: hexToRgb('#78350F')
+    };
+    const errColor =[255, 0, 255]; 
+
+    let i = 0;
+    for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+            const tileId = localMap.grid[y][x];
+            const[r, g, b] = colors[tileId] || errColor;
+            data[i++] = r; data[i++] = g; data[i++] = b; data[i++] = 255;
+        }
+    }
+    ctx.putImageData(imgData, 0, 0);
+}

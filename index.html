@@ -1,0 +1,785 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Underdark Fishing</title>
+    <!-- Prevent favicon requests in dev -->
+    <link rel="icon" href="data:,">
+    <!-- Tone.js for Audio Engine -->
+    <script src="js/lib/Tone.js"></script>
+    <!-- Game Styles -->
+    <link rel="stylesheet" href="game.css">
+</head>
+<body>
+
+    <!-- THE MASTER CONTAINER -->
+    <div id="game-container">
+
+        <!-- ========================================== -->
+        <!-- Z-0 | THE WORLD (Exploration Map rendering) -->
+        <!-- ========================================== -->
+        <div id="z0-world">
+            <canvas id="game-canvas"></canvas>
+        </div>
+
+<!-- ========================================== -->
+        <!-- Z-10 | THE SIDEBAR HUD                     -->
+        <!-- ========================================== -->
+        <div id="z10-hud" style="padding: 0.5rem; gap: 0.5rem;">
+            <!-- Navigation & Time -->
+            <div class="hud-panel" style="text-align: center; padding: 0.4rem;">
+                <div class="digital-clock" id="hud-clock" style="margin-bottom: 0.4rem;">
+                    <!-- Injected via JS -->
+                </div>
+                <!-- Shrunk minimap from 200px to 160px -->
+                <div id="minimap-container" style="margin: 0 auto; width: 160px; height: 160px;">
+                    <canvas id="minimap-canvas" width="160" height="160"></canvas>
+                </div>
+            </div>
+
+            <!-- Vitals -->
+            <div class="hud-panel" style="padding: 0.6rem 0.5rem;">
+                <div class="vital-row" style="margin-bottom: 0.3rem;">
+                    <span class="vital-label" style="font-size:0.85rem; width:45px;">HULL</span>
+                    <div class="vital-bar-track" style="height:12px;">
+                        <div class="vital-bar-fill fill-hp" id="hud-hp-bar" style="width: 100%;"></div>
+                        <div class="vital-text" id="hud-hp-text" style="font-size:0.75rem;">50/50</div>
+                    </div>
+                </div>
+                <div class="vital-row" style="margin-bottom: 0.3rem;">
+                    <span class="vital-label" style="font-size:0.85rem; width:45px;">FUEL</span>
+                    <div class="vital-bar-track" style="height:12px;">
+                        <div class="vital-bar-fill fill-fuel" id="hud-fuel-bar" style="width: 100%;"></div>
+                        <div class="vital-text" id="hud-fuel-text" style="font-size:0.75rem;">100%</div>
+                    </div>
+                </div>
+                <div class="vital-row" style="margin-bottom: 0.3rem;">
+                    <span class="vital-label" style="font-size:0.85rem; width:45px;">FOOD</span>
+                    <div class="vital-bar-track" style="height:12px;">
+                        <div class="vital-bar-fill fill-ration" id="hud-ration-bar" style="width: 50%;"></div>
+                        <div class="vital-text" id="hud-ration-text" style="font-size:0.75rem;">10/20</div>
+                    </div>
+                </div>
+                <div class="vital-row" style="margin-bottom: 0;">
+                    <span class="vital-label" style="font-size:0.85rem; width:45px;">NOISE</span>
+                    <div class="vital-bar-track" style="height:12px;">
+                        <div class="vital-bar-fill" id="hud-noise-bar" style="width: 0%; background: var(--green-safe); transition: width 0.1s linear, background-color 0.2s;"></div>
+                        <div class="vital-text" id="hud-noise-text" style="font-size:0.75rem;">0%</div>
+                    </div>
+                </div>
+            </div>
+
+<!-- Loadout Quick View -->
+            <div class="hud-panel" style="padding: 0.5rem; display: flex; flex-direction: column; gap: 0.4rem;">
+                <div style="display: flex; align-items: center; gap: 0.6rem;">
+                    <img id="hud-rod-img" src="" style="width: 24px; height: 24px; image-rendering: pixelated; background: #000; border: 1px solid var(--panel-border); border-radius: 4px; flex-shrink: 0;" />
+                    <div style="display: flex; flex-direction: column; justify-content: center; overflow: hidden;">
+                        <div style="font-size: 0.9rem; color: var(--cyan-glow); font-weight: bold; line-height: 1.1; white-space: nowrap; text-overflow: ellipsis; overflow: hidden;" id="hud-rod-name">Pine Caster</div>
+                    </div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 0.6rem;">
+                    <img id="hud-lure-img" src="" style="width: 24px; height: 24px; image-rendering: pixelated; background: #000; border: 1px solid var(--panel-border); border-radius: 4px; flex-shrink: 0;" />
+                    <div style="display: flex; flex-direction: column; justify-content: center; overflow: hidden;">
+                        <div style="font-size: 0.9rem; color: var(--gold-warn); font-weight: bold; line-height: 1.1; white-space: nowrap; text-overflow: ellipsis; overflow: hidden;" id="hud-lure-name">Bare Hook</div>
+                        <!-- RESTORED: Durability Tracker -->
+                        <div style="font-size: 0.75rem; color: var(--text-main);" id="hud-lure-durability">Durability: ∞</div>
+                    </div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 0.6rem;">
+                    <img id="hud-bait-img" src="" style="width: 24px; height: 24px; image-rendering: pixelated; background: #000; border: 1px solid var(--panel-border); border-radius: 4px; flex-shrink: 0;" />
+                    <div style="display: flex; flex-direction: column; justify-content: center; overflow: hidden;">
+                        <div style="font-size: 0.9rem; color: var(--gold-warn); font-weight: bold; line-height: 1.1; white-space: nowrap; text-overflow: ellipsis; overflow: hidden;" id="hud-bait-name">No Bait</div>
+                        <!-- RESTORED: Bait Charges Tracker -->
+                        <div style="font-size: 0.75rem; color: var(--text-main);" id="hud-bait-charges">Standard Pool</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Active Buffs Panel -->
+            <div class="hud-panel" id="hud-buffs-panel" style="padding: 0.5rem; display: none; flex-direction: column; gap: 0.4rem;">
+                <div style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; margin-bottom: -0.2rem;">Active Alchemy</div>
+                <div id="hud-buffs-list" style="display: flex; flex-direction: column; gap: 0.2rem;"></div>
+            </div>
+
+            <!-- Action Log -->
+            <div class="action-log" id="hud-log" style="padding: 0.4rem;">
+                <!-- Logs injected here via JS -->
+            </div>
+        </div>
+
+        <!-- ========================================== -->
+        <!-- Z-50 | ACTION OVERLAYS                     -->
+        <!-- ========================================== -->
+        <div id="z50-action">
+            <!-- Fishing Minigame UI injected here -->
+        </div>
+
+        <!-- Z-60 | ENCOUNTER UI -->
+        <div id="z60-encounter" style="display: none; position: absolute; inset: 0; z-index: 60; background: rgba(2, 6, 23, 0.85); backdrop-filter: blur(4px); flex-direction: column; align-items: center; justify-content: center;">
+    
+            <!-- ADD overflow: hidden; HERE -->
+            <div style="background: var(--panel-base); border: 2px solid var(--cyan-glow); padding: 1.5rem; border-radius: 8px; width: 680px; max-width: 90vw; max-height: 90vh; box-shadow: 0 0 40px rgba(34, 211, 238, 0.15); display: flex; flex-direction: column; gap: 1rem; overflow: hidden;">
+                        
+                <!-- Dialogue Section -->
+                <div class="hub-dialogue-box" style="position: relative; top: auto; right: auto; left: auto; width: 100%; bottom: auto; margin: 0; padding: 1rem; box-shadow: none; border-color: var(--panel-border);">
+                    <img id="enc-dialogue-portrait" src="" alt="NPC Portrait" style="width: 96px; height: 96px; image-rendering: pixelated; border-radius: 4px; border: 2px solid var(--panel-border); background: #000; flex-shrink: 0;" />
+                    <div class="hub-dialogue-content">
+                        <span class="npc-speaker" id="enc-speaker" style="font-size: 1.3rem;">NPC Name</span>
+                        <span id="enc-text" style="font-style: italic; min-height: 3rem; line-height: 1.3;">"Hello there."</span>
+                    </div>
+                </div>
+
+                <!-- Shop Header -->
+                <div style="display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px solid var(--panel-border); padding-bottom: 0.5rem;">
+                    <div style="display: flex; gap: 1rem; align-items: baseline;">
+                        <h2 style="margin: 0; color: var(--text-main); font-size: 1.6rem;">Wares & Trades</h2>
+                        <div style="display:flex; gap:0.5rem; margin-left: 1rem;">
+                            <button class="menu-btn" id="btn-enc-buy" style="padding: 0.2rem 0.8rem; font-size: 1.1rem; width: auto; margin: 0;">Buy</button>
+                            <button class="menu-btn" id="btn-enc-sell" style="padding: 0.2rem 0.8rem; font-size: 1.1rem; width: auto; margin: 0;">Sell</button>
+                        </div>
+                    </div>
+                    <div style="font-size: 1.4rem; color: var(--gold-warn);">💰 <span id="enc-player-gold">0</span>g</div>
+                </div>
+
+                <!-- Shop List -->
+                <!-- FIX: Added flex: 1 so the list naturally scrolls instead of stretching the modal -->
+                <div id="enc-market-list" style="flex: 1; min-height: 150px; overflow-y: auto; display: flex; flex-direction: column; gap: 0.5rem; padding-right: 0.5rem;">
+                    <!-- Items injected here -->
+                </div>
+
+                <!-- Leave Button -->
+                <button class="menu-btn" id="btn-enc-leave" style="width: 100%; margin: 0; font-size: 1.4rem; padding: 0.6rem; border-color: var(--cyan-glow); color: var(--cyan-glow);">Part Ways</button>
+            </div>
+        </div>
+
+        <!-- ========================================== -->
+        <!-- Z-65 | TOURNAMENT UI                       -->
+        <!-- ========================================== -->
+        <div id="z65-tournament" style="display: none; position: absolute; inset: 0; z-index: 65; background: rgba(2, 6, 23, 0.85); backdrop-filter: blur(4px); flex-direction: column; align-items: center; justify-content: center;">
+            <div style="background: var(--panel-base); border: 2px solid var(--gold-warn); padding: 1.5rem; border-radius: 8px; width: 680px; max-width: 90vw; max-height: 90vh; box-shadow: 0 0 40px rgba(251, 191, 36, 0.15); display: flex; flex-direction: column; gap: 1rem; overflow: hidden;">
+                <!-- Dialogue Box -->
+                <div class="hub-dialogue-box" style="position: relative; top: auto; right: auto; left: auto; width: 100%; bottom: auto; margin: 0; padding: 1rem; box-shadow: none; border-color: var(--panel-border);">
+                    <img id="tourn-dialogue-portrait" src="" alt="NPC Portrait" style="width: 96px; height: 96px; image-rendering: pixelated; border-radius: 4px; border: 2px solid var(--panel-border); background: #000; flex-shrink: 0;" />
+                    <div class="hub-dialogue-content">
+                        <span class="npc-speaker" id="tourn-speaker" style="font-size: 1.3rem;">NPC Name</span>
+                        <span id="tourn-text" style="font-style: italic; min-height: 3rem; line-height: 1.3;">"Welcome to the tournament!"</span>
+                    </div>
+                </div>
+                
+                <!-- Dynamic Content Area -->
+                <div id="tourn-content-area" style="flex: 1; min-height: 150px; overflow-y: auto; display: flex; flex-direction: column; gap: 0.5rem; padding-right: 0.5rem;">
+                    <!-- Injected via JS -->
+                </div>
+
+                <button class="menu-btn" id="btn-tourn-leave" style="width: 100%; margin: 0; font-size: 1.4rem; padding: 0.6rem; border-color: var(--cyan-glow); color: var(--cyan-glow);">Leave</button>
+            </div>
+        </div>
+
+        <!-- ========================================== -->
+        <!-- FLOATING TOURNAMENT TRACKER                -->
+        <!-- ========================================== -->
+        <div id="tournament-tracker" style="display: none; position: absolute; left: 1rem; bottom: 1rem; z-index: 10; background: rgba(15, 23, 42, 0.95); border: 2px solid var(--gold-warn); padding: 1rem; border-radius: 6px; flex-direction: column; gap: 0.5rem; pointer-events: none; width: 250px;">
+            <div style="color: var(--cyan-glow); font-weight: bold; font-size: 1.2rem; border-bottom: 1px dashed var(--panel-border); padding-bottom: 0.3rem;" id="tt-objective">Objective</div>
+            <div style="display: flex; justify-content: space-between; font-size: 1.1rem;">
+                <span style="color: var(--text-muted);">Time:</span>
+                <span id="tt-time" style="color: var(--text-main); font-weight: bold;">05:00</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; font-size: 1.1rem;">
+                <span style="color: var(--text-muted);">1st Place:</span>
+                <span id="tt-first" style="color: var(--gold-warn); font-weight: bold;">0</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; font-size: 1.1rem;">
+                <span style="color: var(--text-muted);">You:</span>
+                <span id="tt-player" style="color: var(--green-safe); font-weight: bold;">0</span>
+            </div>
+        </div>
+        
+        <!-- ========================================== -->
+        <!-- Z-75 | SETTLEMENT HUB                      -->
+        <!-- ========================================== -->
+        <div id="z75-hub" style="display: none; position: absolute; inset: 0; z-index: 75; background: var(--bg-void); flex-direction: column;">
+            
+            <!-- Panoramic Banner -->
+            <div class="hub-banner">
+                <div class="hub-name-plate">
+                    <h2 class="hub-name" id="hub-title">Town Name</h2>
+                    <div class="hub-biome" id="hub-biome">Biome</div>
+                </div>
+                <img id="hub-img" src="" alt="Settlement View">
+
+                <!-- Dialogue Box Moved INSIDE the banner -->
+                <div class="hub-dialogue-box">
+                    <img id="hub-dialogue-portrait" src="" alt="NPC Portrait" />
+                    <div class="hub-dialogue-content">
+                        <span class="npc-speaker" id="hub-speaker">System</span>
+                        <span id="hub-text" style="font-style: italic;">Welcome to the settlement.</span>
+                    </div>
+                </div>
+            </div>
+
+            <div style="display: flex; flex: 1; overflow: hidden; padding: 0 2rem 2rem 2rem; gap: 2rem; margin-top: 1.5rem;">
+                
+                <!-- Left: Navigation Tabs -->
+            <div style="flex: 1; display: flex; flex-direction: column; gap: 1rem; max-width: 250px;">
+                <div class="hub-tabs">
+                    <button class="hub-tab-btn active" data-tab="market">Merchant</button>
+                    <button class="hub-tab-btn" data-tab="fishmonger">Fishmonger</button>
+                    <button class="hub-tab-btn" data-tab="boatwright">Boatwright</button>
+                    <button class="hub-tab-btn" data-tab="tavern">Tavern</button>
+                    <button class="hub-tab-btn" data-tab="safehouse" style="margin-top: 1rem; border-color: var(--gold-warn); color: var(--gold-warn);">Safehouse</button>
+                    <!-- NEW: Myconid Colony Tabs (Hidden by default) -->
+                    <button class="hub-tab-btn" data-tab="compost" style="display: none; border-color: #4ADE80; color: #4ADE80;">Loam Compost</button>
+                    <button class="hub-tab-btn" data-tab="elders" style="display: none; border-color: #4ADE80; color: #4ADE80;">Colony Elders</button>
+                </div>
+                <button class="menu-btn" id="btn-hub-depart" style="width: 100%; margin-top: auto; padding: 0.8rem; font-size: 1.6rem; border-color: var(--red-danger); color: var(--red-danger);">Depart</button>
+            </div>
+
+                <!-- Right: Active Shop / Content Area -->
+                <div id="hub-content-area" style="flex: 2; height: 100%; background: var(--panel-base); border: 2px solid var(--panel-border); border-radius: 8px; padding: 1.5rem; overflow-y: auto;">
+                    <!-- Injected dynamically by JS -->
+                </div>
+
+            </div>
+        </div>
+
+        <!-- ========================================== -->
+        <!-- Z-80 | SAFEHOUSE FULL SCREEN               -->
+        <!-- ========================================== -->
+        <div id="z80-safehouse" style="display: none; position: absolute; inset: 0; z-index: 80; background: var(--bg-void); flex-direction: column;">
+            
+            <div class="grimoire-header" style="justify-content: space-between; padding-right: 2rem; align-items: center;">
+                <div style="display: flex;">
+                    <div class="grim-tab sh-main-tab active" data-shtab="drydock">Dry Dock</div>
+                    <div class="grim-tab sh-main-tab" data-shtab="stash">The Stash</div>
+                    <div class="grim-tab sh-main-tab" data-shtab="aquarium">Aquarium</div>
+                    <div class="grim-tab sh-main-tab" data-shtab="realestate">Upgrades</div>
+                </div>
+                <div style="display: flex; gap: 2rem; align-items: center;">
+                    <div style="font-size: 2rem; color:var(--gold-warn); font-weight: bold;">💰 <span id="sh-gold-display">0</span>g</div>
+                    <button class="menu-btn" id="btn-exit-safehouse" style="margin: 0; width: auto; padding: 0.5rem 1.5rem; font-size: 1.5rem; border-color: var(--cyan-glow); color: var(--cyan-glow);">Return to Settlement</button>
+                </div>
+            </div>
+            
+            <!-- Safehouse Content Container -->
+            <div class="grimoire-content" id="safehouse-full-content" style="display: flex; flex-direction: column; overflow: hidden; padding: 2rem;">
+                <!-- Injected via JS -->
+            </div>
+        </div>
+
+<!-- ========================================== -->
+        <!-- Z-100 | THE GRIMOIRE (Pause Menu)          -->
+        <!-- ========================================== -->
+        <div id="z100-grimoire">
+            <div class="grimoire-header">
+                <div class="grim-tab active" data-tab="map">Map</div>
+                <div class="grim-tab" data-tab="cargo">Cargo Hold</div>
+                <div class="grim-tab" data-tab="tackle">Tackle Box</div>
+                <div class="grim-tab" data-tab="loadout">Loadout</div>
+                <div class="grim-tab" data-tab="character">Character</div>
+                <div class="grim-tab" data-tab="bestiary">Bestiary</div>
+                <div class="grim-tab" data-tab="quests">Quests</div>
+                <div class="grim-tab" data-tab="guide" style="color: var(--gold-warn);">Guide</div> <!-- NEW -->
+            </div>
+            
+            <div class="grimoire-content" id="grimoire-body">
+                
+                <!-- 1. MAP TAB -->
+                <div id="grim-page-map" class="grim-page" style="display: flex; gap: 2rem; height: 100%;">
+                    <div style="display: flex; flex-direction: column;">
+                        <canvas id="grim-map-canvas" width="512" height="512" style="flex-shrink: 0;"></canvas>
+                        <!-- Legend moved below the map in a grid -->
+                        <div id="grim-map-legend" style="margin-top: 1rem; display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
+                            <!-- Injected by JS based on Biomes -->
+                        </div>
+                    </div>
+                    
+                    <div class="grim-map-info" style="flex: 1; display: flex; flex-direction: column; gap: 1rem; min-height: 0;">
+                        <div style="flex-shrink: 0;">
+                            <h2 style="font-size: 2.5rem; margin-top: 0; margin-bottom: 0.5rem;" id="grim-map-title">The Darklake</h2>
+                            <p style="color: var(--text-muted); font-size: 1.2rem; margin-top: 0;">Global Node Network</p>
+                        </div>
+                        
+                        <div style="background: var(--bg-void); border: 1px solid var(--panel-border); padding: 1.2rem; border-radius: 4px; flex-shrink: 0;">
+                            <h3 style="margin-top: 0; color: var(--text-main);">Current Location</h3>
+                            <div id="grim-map-coords" style="color: var(--cyan-glow); font-size: 1.5rem; font-weight: bold; margin-bottom: 0.2rem;">[0, 0]</div>
+                            <div id="grim-map-biome" style="font-size: 1.2rem; font-weight: bold;">Biome Name</div>
+                        </div>
+
+                        <!-- Ecology fills remaining space -->
+                        <div style="background: var(--bg-void); border: 1px solid var(--panel-border); padding: 1.2rem; border-radius: 4px; flex: 1; display: flex; flex-direction: column; min-height: 0;">
+                            <h3 style="margin-top: 0; margin-bottom: 0.8rem; color: var(--text-main);">Regional Ecology</h3>
+                            <div id="grim-map-ecology" style="display: flex; flex-direction: column; gap: 0.8rem; overflow-y: auto; padding-right: 0.5rem; flex: 1;">
+                                <!-- Species injected here by JS -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 2. CHARACTER TAB -->
+                <div id="grim-page-character" class="grim-page" style="display: none; gap: 2rem;">
+                    <div style="flex: 1; background: var(--bg-void); border: 2px solid var(--panel-border); padding: 2rem; border-radius: 8px; display: flex; flex-direction: column; align-items: center;">
+                        <img id="grim-char-portrait" src="" style="width: 256px; height: 256px; image-rendering: pixelated; border: 2px solid var(--panel-border); border-radius: 4px;" />
+                        <h2 id="grim-char-name" style="font-size: 2.5rem; margin: 1rem 0 0.2rem 0; color: var(--cyan-glow);">Name</h2>
+                        <div id="grim-char-lore" style="color: var(--text-muted); font-size: 1.2rem;">Race Gender</div>
+                        
+                        <div style="width: 100%; margin-top: 2rem;">
+                            <div style="display: flex; justify-content: space-between; font-size: 1.2rem; margin-bottom: 0.5rem;">
+                                <span>Level <span id="grim-char-level" style="color: var(--cyan-glow); font-weight: bold;">1</span></span>
+                                <span><span id="grim-char-xp">0</span> / <span id="grim-char-max-xp">100</span> XP</span>
+                            </div>
+                            <div style="width: 100%; height: 16px; background: #000; border: 1px solid var(--panel-border); border-radius: 4px; overflow: hidden;">
+                                <div id="grim-char-xp-fill" style="width: 0%; height: 100%; background: var(--cyan-glow);"></div>
+                            </div>
+                        </div>
+                        
+                        <div style="width: 100%; margin-top: 2rem; display: flex; justify-content: space-between; font-size: 1.5rem; background: var(--panel-base); padding: 1rem; border-radius: 4px; border: 1px solid var(--panel-border);">
+                            <span>💰 <span id="grim-char-gold" style="color: var(--gold-warn);">0</span>g</span>
+                            <span>🍖 <span id="grim-char-rations">0</span></span>
+                        </div>
+                    </div>
+                    
+                    <div style="flex: 1.5; background: var(--bg-void); border: 2px solid var(--panel-border); padding: 2rem; border-radius: 8px;">
+                        <div style="display: flex; justify-content: space-between; align-items: baseline; border-bottom: 2px solid var(--panel-border); padding-bottom: 0.5rem; margin-bottom: 1rem;">
+                            <h2 style="margin: 0; font-size: 2rem;">Attributes</h2>
+                            <div style="color: var(--gold-warn); font-size: 1.2rem;">Unspent Points: <span id="grim-char-pts">0</span></div>
+                        </div>
+                        <div id="grim-char-stats" style="display: flex; flex-direction: column; gap: 0.5rem;"></div>
+                    </div>
+                </div>
+
+                <!-- 3. CARGO HOLD TAB -->
+                <div id="grim-page-cargo" class="grim-page" style="display: none; gap: 2rem; height: 100%;">
+                    <!-- Left: Grid -->
+                    <div style="flex: 1; background: var(--bg-void); border: 2px solid var(--panel-border); border-radius: 8px; display: flex; flex-direction: column; overflow: hidden;">
+                        <div style="padding: 1rem; border-bottom: 2px solid var(--panel-border); background: var(--panel-base); display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <h2 style="margin: 0; color: var(--cyan-glow); font-size: 2rem;">Cargo Hold</h2>
+                                <span style="color: var(--text-muted); font-size: 1.2rem;">Capacity: <span id="grim-cargo-count" style="color: var(--text-main);">0</span> / <span id="grim-cargo-max">10</span></span>
+                            </div>
+                            <select id="grim-cargo-sort" style="background: var(--bg-void); color: var(--text-main); border: 1px solid var(--panel-border); padding: 0.5rem; border-radius: 4px; font-family: inherit; font-size: 1.1rem; cursor: pointer;">
+                                <option value="none">Sort: Default</option>
+                                <option value="type">Sort: By Type</option>
+                                <option value="name">Sort: A-Z</option>
+                                <option value="value">Sort: Value</option>
+                            </select>
+                        </div>
+                        <div id="grim-cargo-grid" style="flex: 1; padding: 1rem; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 0.5rem; align-content: flex-start;"></div>
+                    </div>
+
+                    <!-- Right: Details -->
+                    <div style="flex: 1.5; background: var(--bg-void); border: 2px solid var(--panel-border); border-radius: 8px; padding: 1.5rem; display: flex; flex-direction: column;">
+                        <div id="grim-cargo-details" style="display: none; flex-direction: column; height: 100%;">
+                            <div style="text-align: center; border-bottom: 1px solid var(--panel-border); padding-bottom: 1rem; margin-bottom: 1rem;">
+                                <img id="grim-cargo-img" src="" style="width: 128px; height: 128px; image-rendering: pixelated; border: 2px solid var(--panel-border); border-radius: 4px; background: #000;" />
+                                <h2 id="grim-cargo-name" style="color: var(--gold-warn); margin: 0.5rem 0 0 0; font-size: 2rem;">Item Name</h2>
+                                <div id="grim-cargo-sub" style="color: var(--text-muted); font-size: 1.2rem;">Rarity Type</div>
+                            </div>
+                            
+                            <div id="grim-cargo-stats" style="flex: 1; font-size: 1.4rem; color: var(--text-main); display: flex; flex-direction: column; gap: 0.5rem;"></div>
+                            
+                            <div style="margin-top: auto; display: flex; gap: 1.5rem; justify-content: center;">
+                                <button id="btn-cargo-action" class="menu-btn" style="width: auto; flex: none; font-size: 1.3rem; padding: 0.5rem 2rem; margin: 0; display: none;">Action</button>
+                                <button id="btn-cargo-equip" class="menu-btn" style="width: auto; flex: none; font-size: 1.3rem; padding: 0.5rem 2rem; margin: 0; display: none; border-color: var(--green-safe); color: var(--green-safe);">Equip</button>
+                            </div>
+                        </div>
+                        
+                        <div id="grim-cargo-empty" style="flex: 1; display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 1.8rem; text-align: center;">
+                            Select an item in your cargo.
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 4. TACKLE BOX TAB -->
+                <div id="grim-page-tackle" class="grim-page" style="display: none; gap: 2rem; height: 100%;">
+                    <!-- Left: Bench & Grid -->
+                    <div style="flex: 2; display: flex; flex-direction: column; gap: 1rem; overflow: hidden;">
+                        
+                        <div style="background: var(--bg-void); border: 2px solid var(--panel-border); border-radius: 8px; padding: 1rem;">
+                            <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 1rem;">
+                                <h3 style="margin: 0; color: var(--cyan-glow); font-size: 1.8rem;">Alchemy & Crafting Bench</h3>
+                                <span style="color: var(--text-muted); font-size: 1.2rem;">Select 3 to 5 Reagents</span>
+                            </div>
+                            <div id="grim-craft-slots" style="display: flex; gap: 1rem;"></div>
+                        </div>
+
+                        <div style="flex: 1; background: var(--bg-void); border: 2px solid var(--panel-border); border-radius: 8px; display: flex; flex-direction: column; overflow: hidden;">
+                            <div style="padding: 1rem; border-bottom: 2px solid var(--panel-border); background: var(--panel-base); display: flex; justify-content: space-between; align-items: center;">
+                                <div>
+                                    <h2 style="margin: 0; color: var(--cyan-glow); font-size: 2rem;">Reagents Pouch</h2>
+                                    <span style="color: var(--text-muted); font-size: 1.2rem;">Total Parts: <span id="grim-tackle-count" style="color: var(--text-main);">0</span></span>
+                                </div>
+                            </div>
+                            <div id="grim-tackle-grid" style="flex: 1; padding: 1rem; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 0.5rem; align-content: flex-start;"></div>
+                        </div>
+                    </div>
+
+                    <!-- Right: Details / Preview -->
+                    <div style="flex: 1.5; background: var(--bg-void); border: 2px solid var(--panel-border); border-radius: 8px; padding: 1.5rem; display: flex; flex-direction: column;">
+                        <div id="grim-tackle-details" style="display: none; flex-direction: column; height: 100%;">
+                            <div style="text-align: center; border-bottom: 1px solid var(--panel-border); padding-bottom: 1rem; margin-bottom: 1rem;">
+                                <img id="grim-tackle-img" src="" style="width: 128px; height: 128px; image-rendering: pixelated; border: 2px solid var(--panel-border); border-radius: 4px; background: #000;" />
+                                <h2 id="grim-tackle-name" style="color: var(--gold-warn); margin: 0.5rem 0 0 0; font-size: 2rem;">Item Name</h2>
+                                <div id="grim-tackle-sub" style="color: var(--text-muted); font-size: 1.2rem;">Rarity Type</div>
+                            </div>
+                            
+                            <div id="grim-tackle-stats" style="flex: 1; font-size: 1.4rem; color: var(--text-main); display: flex; flex-direction: column; gap: 0.5rem;"></div>
+                            
+                            <div id="grim-tackle-actions" style="margin-top: auto; display: flex; flex-direction: column; gap: 0.5rem;">
+                                <button id="btn-tackle-action" class="menu-btn" style="width: 100%; font-size: 1.3rem; padding: 0.5rem; margin: 0; display: none;">Add to Bench</button>
+                                <div id="btn-group-craft" style="display:none; gap: 0.5rem; width: 100%;">
+                                    <button id="btn-craft-lure" class="menu-btn" style="flex:1; font-size: 1.1rem; padding: 0.5rem; margin: 0; border-color: var(--cyan-glow); color: var(--cyan-glow);">🪝 Lure</button>
+                                    <button id="btn-craft-potion" class="menu-btn" style="flex:1; font-size: 1.1rem; padding: 0.5rem; margin: 0; border-color: #A855F7; color: #A855F7;">🧪 Potion</button>
+                                    <button id="btn-craft-bait" class="menu-btn" style="flex:1; font-size: 1.1rem; padding: 0.5rem; margin: 0; border-color: var(--gold-warn); color: var(--gold-warn);">🪱 Bait</button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div id="grim-tackle-empty" style="flex: 1; display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 1.8rem; text-align: center;">
+                            Select a part in your pouch,<br>or add parts to the Bench.
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 5. LOADOUT TAB -->
+                <div id="grim-page-loadout" class="grim-page" style="display: none; gap: 2rem; height: 100%;">
+                    <div style="flex: 1; display: flex; flex-direction: column; gap: 1rem; overflow-y: auto; padding-right: 0.5rem;">
+                        <div class="loadout-slot" id="loadout-boat">
+                            <h3 style="margin:0 0 0.5rem 0; color: var(--text-muted); font-size: 1.5rem;">Boat Chassis</h3>
+                            <div class="slot-content"></div>
+                        </div>
+                        <div class="loadout-slot" id="loadout-rod">
+                            <h3 style="margin:0 0 0.5rem 0; color: var(--text-muted); font-size: 1.5rem;">Fishing Rod</h3>
+                            <div class="slot-content"></div>
+                        </div>
+                        <div class="loadout-slot" id="loadout-lure">
+                            <h3 style="margin:0 0 0.5rem 0; color: var(--text-muted); font-size: 1.5rem;">Active Lure</h3>
+                            <div class="slot-content"></div>
+                        </div>
+                        <!-- NEW: Bait Slot -->
+                        <div class="loadout-slot" id="loadout-bait">
+                            <h3 style="margin:0 0 0.5rem 0; color: var(--text-muted); font-size: 1.5rem;">Target Bait</h3>
+                            <div class="slot-content"></div>
+                        </div>
+                    </div>
+                    <div style="flex: 1.5; background: var(--bg-void); border: 2px solid var(--panel-border); border-radius: 8px; padding: 1.5rem; display: flex; flex-direction: column; overflow-y: auto;">
+                        <h2 style="margin: 0 0 1rem 0; color: var(--cyan-glow); font-size: 2.2rem;">Physics & Effective Stats</h2>
+                        <div id="grim-dashboard-content" style="display: flex; flex-direction: column; gap: 1rem;"></div>
+                    </div>
+                </div>
+
+                <!-- 6. BESTIARY TAB (NEW) -->
+                <div id="grim-page-bestiary" class="grim-page" style="display: none; gap: 2rem; height: 100%;">
+                    <!-- Left: Grid of Discovered Fish -->
+                    <div style="flex: 2; background: var(--bg-void); border: 2px solid var(--panel-border); border-radius: 8px; display: flex; flex-direction: column; overflow: hidden;">
+                        
+                        <!-- ADDED SORT DROPDOWN HERE -->
+                        <div style="padding: 1rem; border-bottom: 2px solid var(--panel-border); background: var(--panel-base); display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <h2 style="margin: 0; color: var(--cyan-glow); font-size: 2rem;">Bestiary</h2>
+                                <span style="color: var(--text-muted); font-size: 1.2rem;">Discovered: <span id="grim-bestiary-count" style="color: var(--text-main);">0</span></span>
+                            </div>
+                            <select id="grim-bestiary-sort" style="background: var(--bg-void); color: var(--text-main); border: 1px solid var(--panel-border); padding: 0.5rem; border-radius: 4px; font-family: inherit; font-size: 1.1rem; cursor: pointer;">
+                                <option value="recent">Most Recent</option>
+                                <option value="alpha">Alphabetical</option>
+                                <option value="family">By Family</option>
+                                <option value="caught">Most Caught</option>
+                            </select>
+                        </div>
+                        
+                        <div id="grim-bestiary-grid" style="flex: 1; padding: 1rem; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 0.5rem; align-content: flex-start;">
+                            <!-- Bestiary slots injected here -->
+                        </div>
+                    </div>
+
+                    <!-- Right: Lore & Stats Panel -->
+                    <div style="flex: 1.5; background: var(--bg-void); border: 2px solid var(--panel-border); border-radius: 8px; padding: 1.5rem; display: flex; flex-direction: column; overflow-y: auto;">
+                        <div id="grim-bestiary-details" style="display: none; flex-direction: column; height: 100%;">
+                            <div style="text-align: center; border-bottom: 1px solid var(--panel-border); padding-bottom: 1rem; margin-bottom: 1rem;">
+                                <img id="grim-bestiary-img" src="" style="width: 128px; height: 128px; image-rendering: pixelated; border: 2px solid var(--panel-border); border-radius: 4px; background: #000;" />
+                                <h2 id="grim-bestiary-name" style="color: var(--gold-warn); margin: 0.5rem 0 0 0; font-size: 2rem;">Species Name</h2>
+                                <div id="grim-bestiary-sub" style="color: var(--text-muted); font-size: 1.2rem;">Rarity Family</div>
+                            </div>
+                            
+                            <!-- Knowledge Level Progress -->
+                            <div style="margin-bottom: 1.5rem; background: var(--panel-base); padding: 1rem; border-radius: 6px; border: 1px solid var(--panel-border);">
+                                <div style="display: flex; justify-content: space-between; font-size: 1.2rem; margin-bottom: 0.5rem;">
+                                    <span style="color: var(--cyan-glow); font-weight: bold;">Knowledge Lv. <span id="grim-bestiary-lvl">1</span></span>
+                                    <span style="color: var(--text-muted);"><span id="grim-bestiary-xp">0</span> / <span id="grim-bestiary-next-xp">100</span> XP</span>
+                                </div>
+                                <div style="width: 100%; height: 8px; background: #000; border: 1px solid var(--panel-border); border-radius: 4px; overflow: hidden;">
+                                    <div id="grim-bestiary-xp-fill" style="width: 0%; height: 100%; background: var(--cyan-glow); transition: width 0.3s;"></div>
+                                </div>
+                                <div id="grim-bestiary-unlocks" style="font-size: 1rem; color: var(--text-muted); margin-top: 0.5rem; text-align: center;">
+                                    Dissect to unlock Habitat and Lure Preferences.
+                                </div>
+                            </div>
+
+                            <div id="grim-bestiary-stats" style="flex: 1; font-size: 1.3rem; color: var(--text-main); display: flex; flex-direction: column; gap: 1rem;">
+                                <!-- Stats injected here -->
+                            </div>
+                        </div>
+                        
+                        <div id="grim-bestiary-empty" style="flex: 1; display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 1.8rem; text-align: center;">
+                            Select a discovered species.
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 7. QUESTS TAB (NEW) -->
+                <div id="grim-page-quests" class="grim-page" style="display: none; flex-direction: column; height: 100%;">
+                    <h1 style="color: var(--cyan-glow); margin-top: 0;">Active Quests</h1>
+                    <div id="grim-quests-list" style="display: flex; flex-direction: column; gap: 1rem; overflow-y: auto; padding-right: 1rem;">
+                        <!-- Quests injected here -->
+                    </div>
+                    <div id="grim-quests-empty" style="flex: 1; display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 1.8rem;">
+                        No active quests. Check the Notice Board in a settlement.
+                    </div>
+                </div>
+
+                <!-- 8. GUIDE TAB (NEW) -->
+                <div id="grim-page-guide" class="grim-page" style="display: none; gap: 2rem; height: 100%;">
+                    <!-- Left: Navigation Menu -->
+                    <div style="flex: 1; max-width: 280px; display: flex; flex-direction: column; gap: 0.5rem; overflow-y: auto; padding-right: 1rem;" id="grim-guide-nav">
+                        <!-- Buttons injected via JS -->
+                    </div>
+                    
+                    <!-- Right: Formatted Text Content -->
+                    <div style="flex: 3; background: var(--bg-void); border: 2px solid var(--panel-border); border-radius: 8px; padding: 2rem; overflow-y: auto; font-family: var(--font-crpg), monospace; font-size: 1.2rem; line-height: 1.6;" id="grim-guide-content">
+                        <!-- Content injected via JS -->
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- ========================================== -->
+        <!-- Z-150 | PAUSE MENU & SETTINGS              -->
+        <!-- ========================================== -->
+        <div id="z150-pause" style="display: none; position: absolute; inset: 0; z-index: 150; background: rgba(2, 6, 23, 0.85); backdrop-filter: blur(4px); flex-direction: column; align-items: center; justify-content: center;">
+            
+            <!-- Removed .hud-panel to prevent transparency issues, using strict modal styling -->
+            <div style="background: var(--panel-base); border: 2px solid var(--cyan-glow); padding: 2.5rem; border-radius: 8px; width: 640px; box-shadow: 0 0 40px rgba(34, 211, 238, 0.15);">
+                
+                <h1 style="color: var(--cyan-glow); font-size: 3.5rem; margin-top: 0; margin-bottom: 2rem; letter-spacing: 0.05em; text-align: center;">PAUSED</h1>
+
+                <!-- Split Layout: Audio (Left) | Controls (Right) -->
+                <div style="display: flex; gap: 3rem; margin-bottom: 2.5rem;">
+                    
+                    <!-- AUDIO COLUMN -->
+                    <div style="flex: 1;">
+                        <h2 style="font-size: 1.8rem; color: var(--text-main); margin-top: 0; border-bottom: 1px solid var(--panel-border); padding-bottom: 0.5rem;">Audio</h2>
+                        
+                        <div style="margin-bottom: 1.5rem; margin-top: 1rem;">
+                            <label style="color: var(--text-muted); font-size: 1.2rem; display: flex; justify-content: space-between;">
+                                Music <span id="lbl-vol-music" style="color: var(--cyan-glow);">50%</span>
+                            </label>
+                            <input type="range" id="slider-vol-music" min="0" max="100" value="50" style="width: 100%; cursor: pointer; margin-top: 0.5rem;" />
+                        </div>
+                        
+                        <div style="margin-bottom: 1.5rem;">
+                            <label style="color: var(--text-muted); font-size: 1.2rem; display: flex; justify-content: space-between;">
+                                SFX <span id="lbl-vol-sfx" style="color: var(--cyan-glow);">50%</span>
+                            </label>
+                            <input type="range" id="slider-vol-sfx" min="0" max="100" value="50" style="width: 100%; cursor: pointer; margin-top: 0.5rem;" />
+                        </div>
+                    </div>
+
+                    <!-- CONTROLS COLUMN -->
+                    <div style="flex: 1;">
+                        <h2 style="font-size: 1.8rem; color: var(--text-main); margin-top: 0; border-bottom: 1px solid var(--panel-border); padding-bottom: 0.5rem;">Controls</h2>
+                        
+                        <ul style="list-style: none; padding: 0; margin: 1rem 0 0 0; font-size: 1.2rem; color: var(--text-muted); line-height: 1.6;">
+                            <li><b style="color: var(--gold-warn);">W A S D</b> - Steer Boat</li>
+                            <li><b style="color: var(--gold-warn);">Mouse</b> - Aim Cast</li>
+                            <li><b style="color: var(--gold-warn);">Hold Click</b> - Charge Cast</li>
+                            <li><b style="color: var(--gold-warn);">Scroll</b> - Adjust Depth / Reel Power</li>
+                            <li><b style="color: var(--gold-warn);">Hold Space</b> - Reel In</li>
+                            <li><b style="color: var(--gold-warn);">E</b> - Interact / Dock</li>
+                            <li><b style="color: var(--gold-warn);">TAB</b> - Open Grimoire</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Action Buttons -->
+                <div style="display: flex; gap: 1.5rem;">
+                    <button class="menu-btn" id="btn-quit-to-menu" style="flex: 1; font-size: 1.6rem; padding: 0.8rem; margin: 0; border-color: var(--red-danger); color: var(--red-danger);">Save & Quit</button>
+                    <button class="menu-btn" id="btn-resume-game" style="flex: 1; font-size: 1.6rem; padding: 0.8rem; margin: 0; border-color: var(--green-safe); color: var(--green-safe);">Resume</button>
+                </div>
+            </div>
+        </div>
+
+<!-- ========================================== -->
+        <!-- Z-200 | SYSTEM MENUS (Start, Character)    -->
+        <!-- ========================================== -->
+        <style>
+            @keyframes pulse-text {
+                0% { opacity: 1; }
+                50% { opacity: 0.3; }
+                100% { opacity: 1; }
+            }
+            .pulse-anim { animation: pulse-text 2s infinite; }
+        </style>
+
+        <div id="z200-menus" style="background: transparent;">
+            <!-- NEW: Menu Background Canvas -->
+            <canvas id="menu-bg-canvas" style="position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; z-index: 1;"></canvas>
+            
+        <!-- START SCREEN -->
+            <div id="screen-start" style="position: relative; z-index: 10; display: flex; flex-direction: column; align-items: center; width: 100%; height: 100%; justify-content: center; background: rgba(2, 6, 23, 0.4);">
+                
+                <!-- Added ID and Transition -->
+                <h1 id="menu-title-text" class="menu-title" style="margin-top: -100px; text-shadow: 0 5px 20px rgba(0,0,0,0.8), 0 0 20px rgba(34, 211, 238, 0.5); transition: color 1s, text-shadow 1s;">UNDERDARK<br>FISHING</h1>
+                
+                <!-- State 1: Click to Start -->
+                <div id="menu-start-prompt" style="cursor: pointer; display: flex; flex-direction: column; align-items: center; margin-top: 2rem;">
+                    <!-- Added ID and Transition -->
+                    <div id="menu-prompt-text" class="pulse-anim" style="font-size: 2.5rem; color: var(--glow); text-shadow: 0 2px 10px rgba(0,0,0,0.8); font-weight: bold; transition: color 1s, text-shadow 1s;">Click to Start</div>
+                </div>
+
+                <!-- State 2: Save Slots (Hidden initially) -->
+                <div id="menu-save-select" style="display: none; flex-direction: column; align-items: center; margin-top: 1rem;">
+                    <h2 style="color: var(--text-main); font-size: 1.5rem; margin-bottom: 1.5rem; text-shadow: 0 2px 5px rgba(0,0,0,0.8);">Select a Save Slot</h2>
+                    <div id="save-slots-container" style="display: flex; gap: 1.5rem; justify-content: center;">
+                        <!-- Buttons injected via JS -->
+                    </div>
+                </div>
+                
+                <!-- Watermark: Styled like the title and added ID -->
+                <div id="menu-watermark" style="position: absolute; bottom: 15px; right: 20px; font-size: 1.1rem; font-family: var(--font-crpg), 'VT323', monospace; text-shadow: 0 2px 10px rgba(0,0,0,0.8), 0 0 10px rgba(34, 211, 238, 0.3); transition: color 1s, text-shadow 1s;">
+                    A game by Beholdr.
+                </div>
+            </div>
+
+<!-- CHARACTER CREATOR -->
+            <div id="screen-char-create" style="position: relative; z-index: 10; display: none; flex-direction: column; align-items: center; width: 100%; height: 100%; justify-content: center; background: rgba(2, 6, 23, 0.85);">
+                <h1 style="color: var(--cyan-glow); font-size: 2.5rem; margin-bottom: 0.5rem; text-shadow: 0 0 10px rgba(34, 211, 238, 0.4);">Forge Identity</h1>
+                
+                <div class="char-create-container" style="width: 1050px; display: grid; grid-template-columns: 1fr 1fr 1.2fr; gap: 1.5rem; background: var(--panel-base); border: 2px solid var(--panel-border); padding: 1.5rem; border-radius: 8px;">
+                    
+                    <!-- COLUMN 1: Identity -->
+                    <div style="display: flex; flex-direction: column; align-items: center;">
+                        <img id="cc-portrait" class="char-portrait-box" src="" style="width: 192px; height: 192px; image-rendering: pixelated; border: 2px solid var(--panel-border); border-radius: 4px; background: #000; margin-bottom: 0.5rem;" />
+                        <button class="menu-btn" id="btn-cc-reroll" style="width: 100%; padding: 0.4rem; margin: 0 0 0.8rem 0; font-size: 1rem;">Randomize Appearance</button>
+                        
+                        <div class="char-input-group" style="width: 100%; margin-bottom: 0.5rem;">
+                            <label style="color: var(--text-muted); font-size: 1rem;">Angler Name</label>
+                            <div style="display: flex; gap: 0.5rem; margin-bottom: 0.2rem;">
+                                <input type="text" id="cc-name" value="Angler" style="flex: 1; margin: 0; background: var(--bg-void); color: var(--text-main); border: 1px solid var(--panel-border); padding: 0.4rem; font-family: inherit; font-size: 1.1rem;" />
+                                <button class="menu-btn" id="btn-cc-random-name" style="width: auto; padding: 0.4rem 0.8rem; margin: 0; font-size: 1.1rem;" title="Randomize Name">🎲</button>
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 1rem; width: 100%;">
+                            <div class="char-input-group" style="flex: 1; margin-bottom: 0;">
+                                <label style="color: var(--text-muted); font-size: 1rem;">Race</label>
+                                <select id="cc-race" style="width: 100%; background: var(--bg-void); color: var(--text-main); border: 1px solid var(--panel-border); padding: 0.4rem; font-family: inherit; font-size: 1.1rem;">
+                                    <option value="Human">Human</option>
+                                    <option value="Dwarf">Dwarf</option>
+                                    <option value="Elf">Elf</option>
+                                    <option value="Orc">Orc</option>
+                                    <option value="Tiefling">Tiefling</option> <!-- NEW -->
+                                    <option value="Myconid">Myconid</option>   <!-- NEW -->
+                                </select>
+                            </div>
+                            <div class="char-input-group" style="flex: 1; margin-bottom: 0;">
+                                <label style="color: var(--text-muted); font-size: 1rem;">Gender</label>
+                                <select id="cc-gender" style="width: 100%; background: var(--bg-void); color: var(--text-main); border: 1px solid var(--panel-border); padding: 0.4rem; font-family: inherit; font-size: 1.1rem;">
+                                    <option value="Female">Female</option>
+                                    <option value="Male">Male</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- COLUMN 2: Attributes -->
+                    <div style="display: flex; flex-direction: column;">
+                        <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 0.5rem; border-bottom: 1px solid var(--panel-border); padding-bottom: 0.3rem;">
+                            <h2 style="margin: 0; font-size: 1.8rem; color: var(--cyan-glow);">Attributes</h2>
+                            <div style="color: var(--gold-warn); font-size: 1.1rem;">Points: <span id="cc-pts" style="font-weight: bold;">3</span></div>
+                        </div>
+                        <div id="cc-stats-list" style="display: flex; flex-direction: column; gap: 0.3rem;"></div>
+                    </div>
+
+                    <!-- COLUMN 3: Vessel Selection -->
+                    <div style="display: flex; flex-direction: column; background: var(--bg-void); border: 1px solid var(--panel-border); border-radius: 6px; padding: 1rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.6rem;">
+                            <h2 style="margin: 0; font-size: 1.5rem; color: var(--gold-warn);">Vessel</h2>
+                            <select id="cc-boat-type" style="background: var(--panel-base); color: var(--cyan-glow); border: 1px solid var(--panel-border); padding: 0.3rem; font-family: inherit; font-size: 1rem; cursor: pointer; border-radius: 4px;">
+                                <option value="skiff">Skiff</option>
+                                <option value="runner">Runner</option>
+                                <option value="corvette">Corvette</option>
+                                <option value="trawler">Trawler</option>
+                                <option value="barge">Barge</option>
+                                <option value="dreadnought">Dreadnought</option>
+                            </select>
+                        </div>
+                        
+                    <!-- Dual Image Display: Profile & Top-Down -->
+                        <div style="display: flex; gap: 0.5rem; margin-bottom: 0.8rem; height: 90px;">
+                            <div style="flex: 1; display: flex; flex-direction: column; background: #000; border: 1px solid var(--panel-border); border-radius: 4px; position: relative;">
+                                <span style="position: absolute; top: 2px; left: 4px; font-size: 0.7rem; color: var(--text-muted); pointer-events: none;">Profile</span>
+                                <img id="cc-boat-img-profile" src="" style="width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated;" />
+                            </div>
+                            <div style="flex: 1; display: flex; flex-direction: column; background: #000; border: 1px solid var(--panel-border); border-radius: 4px; position: relative;">
+                                <span style="position: absolute; top: 2px; left: 4px; font-size: 0.7rem; color: var(--text-muted); pointer-events: none;">Deck</span>
+                                <img id="cc-boat-img-top" src="" style="width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated;" />
+                            </div>
+                        </div>
+                        
+                        <div id="cc-boat-name" style="text-align: center; color: var(--cyan-glow); font-weight: bold; font-size: 1.1rem; margin-bottom: 0.5rem; text-shadow: 1px 1px 2px #000;">Boat Name</div>
+                        
+                        <div id="cc-boat-stats" style="flex: 1; display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.85rem; color: var(--text-main);">
+                            <!-- Stats injected via JS -->
+                        </div>
+                        
+                        <button class="menu-btn" id="btn-cc-reroll-boat" style="width: 100%; padding: 0.4rem; font-size: 1rem; margin: 0.8rem 0 0 0;">Reroll Paint & Details</button>
+                    </div>
+                    
+        <!-- FOOTER: Embark Button -->
+                    <div style="grid-column: span 3; margin-top: 0.5rem;">
+                        <button class="menu-btn" id="btn-embark" style="width: 100%; padding: 0.6rem; font-size: 1.8rem; border-color: var(--cyan-glow); color: var(--cyan-glow); margin: 0; transition: all 0.2s;">Embark</button>
+                    </div>
+                </div>
+            </div>
+            
+        </div> <!-- ✅ ADD THIS </div> TO CLOSE z200-menus! -->
+
+        <!-- ========================================== -->
+        <!-- FLOATING TOOLTIPS                          -->
+        <!-- ========================================== -->
+        <div id="shop-tooltip" style="display: none;"></div>
+        
+        <!-- NEW: Stat Explanation Tooltip -->
+        <div id="stat-tooltip" style="display: none; position: absolute; background: rgba(15, 23, 42, 0.95); border: 2px solid var(--cyan-glow); padding: 1rem; border-radius: 8px; pointer-events: none; z-index: 4000; min-width: 280px; max-width: 320px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); backdrop-filter: blur(4px);">
+            <b id="tt-stat-name" style="color: var(--cyan-glow); font-size: 1.5rem; display: block; margin-bottom: 0.5rem; text-transform: uppercase;">Stat Name</b>
+            <div id="tt-stat-desc" style="color: var(--text-main); font-size: 1.2rem; line-height: 1.3;">Description goes here</div>
+        </div>
+    </div> <!-- Closes game-container -->
+
+    <!-- DYNAMIC SCALING SCRIPT -->
+    <script>
+        function resizeGame() {
+            const container = document.getElementById('game-container');
+            const targetWidth = 1280;
+            const targetHeight = 720;
+            
+            const windowWidth = window.innerWidth;
+            const windowHeight = window.innerHeight;
+            
+            const scaleX = windowWidth / targetWidth;
+            const scaleY = windowHeight / targetHeight;
+            
+            const scale = Math.min(scaleX, scaleY);
+            
+            container.style.transform = `scale(${scale})`;
+        }
+
+        window.addEventListener('resize', resizeGame);
+        resizeGame();
+    </script>
+
+    <!-- MAIN GAME LOOP -->
+    <script type="module" src="./js/game.js"></script>
+
+</body>
+</html>
