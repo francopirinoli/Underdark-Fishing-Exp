@@ -510,6 +510,32 @@ export const FishingRenderer = {
         }
         
         this.lastAiState = state;
+
+        // --- NEW: GEODE MONARCH PRISMATIC FLASH (UI OPACITY) ---
+        const isPrismaticFlash = (engine.fishData && engine.fishData.id === 'geode_monarch' && 
+                                  engine.fishStamina / engine.maxFishStamina <= 0.4 && 
+                                  engine.ai.state !== 'SECOND_WIND');
+
+        if (isPrismaticFlash) {
+            const timeSec = Date.now() / 1000;
+            // Rapid 8.0 rad/s sine wave pulse
+            const pulse = (Math.sin(timeSec * 8.0) + 1) / 2;
+            const flashOpacity = 0.2 + pulse * 0.5; // Fluctuates between 20% and 70%
+
+            this.elements.sweetSpot.style.opacity = flashOpacity;
+            this.elements.trackReelPower.style.opacity = flashOpacity;
+            this.elements.barTension.style.opacity = flashOpacity;
+            this.elements.barFStam.style.opacity = flashOpacity;
+            this.elements.barPStam.style.opacity = flashOpacity;
+        } else {
+            // Reset cleanly to full opacity when not flashing
+            this.elements.sweetSpot.style.opacity = '1';
+            this.elements.trackReelPower.style.opacity = '1';
+            this.elements.barTension.style.opacity = '1';
+            this.elements.barFStam.style.opacity = '1';
+            this.elements.barPStam.style.opacity = '1';
+        }
+
     },
 
     _renderWaterColumn(engine, dt) {
@@ -667,9 +693,37 @@ export const FishingRenderer = {
 
             ctx.translate(fx, fy);
             ctx.rotate(rotation);
-            // Ensure the image exists before drawing
             if (activeFishImg.complete) ctx.drawImage(activeFishImg, -fw / 2, -fh / 2, fw, fh);
             ctx.restore();
         }
-    }
+
+        // --- NEW: GEODE MONARCH PRISMATIC FLASH (RAINBOW CANVAS OVERLAY) ---
+        const isPrismaticFlash = (engine.fishData && engine.fishData.id === 'geode_monarch' && 
+                                  engine.fishStamina / engine.maxFishStamina <= 0.4 && 
+                                  engine.ai.state !== 'SECOND_WIND');
+
+        if (isPrismaticFlash) {
+            const timeSec = Date.now() / 1000;
+            const grad = ctx.createLinearGradient(0, 0, this.CW, this.CH);
+            
+            // Constantly shift the HSL hue angle over time
+            const hueOffset = (timeSec * 180) % 360; 
+            
+            // Pulse intensity matching the UI opacity
+            const pulse = (Math.sin(timeSec * 8.0) + 1) / 2;
+            const pulseIntensity = 0.12 + pulse * 0.18; // Oscillates between 12% and 30% alpha
+
+            // Build our shifting prismatic spectrum
+            grad.addColorStop(0, `hsla(${hueOffset}, 100%, 50%, ${pulseIntensity})`);
+            grad.addColorStop(0.5, `hsla(${(hueOffset + 120) % 360}, 100%, 50%, ${pulseIntensity})`);
+            grad.addColorStop(1, `hsla(${(hueOffset + 240) % 360}, 100%, 50%, ${pulseIntensity})`);
+            
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, this.CW, this.CH);
+
+            // Draw a central vertical laser glint
+            ctx.fillStyle = `rgba(255, 255, 255, ${pulseIntensity * 0.4})`;
+            ctx.fillRect(this.CW / 2 - 12, 0, 24, this.CH);
+        }
+    } // <-- End of _renderWaterColumn function
 };

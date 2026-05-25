@@ -694,7 +694,8 @@ export const GrimoireUI = {
             `;
         }
         // --- RESTORED: 7. UPGRADES ---
-        else if (item.invType === 'upgrade') {
+        // --- FIX: Add ID-prefix fallback to the Grimoire details ---
+        else if (item.invType === 'upgrade' || (item.id && item.id.startsWith('upg_'))) {
             statsEl.innerHTML = `
                 <div style="color:var(--text-main); font-size:1.2rem; text-align:center; padding: 1rem 0;">
                     ${item.desc}

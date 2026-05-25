@@ -575,10 +575,13 @@ function enterHub() {
 
 function resumeFromHub() {
     currentState = STATE.EXPLORATION;
-    const effStats = PlayerEngine.getEffectiveStats(player); // <-- NEW
-    if (player.vitals.hp <= 0) player.vitals.hp = effStats.exploration.maxHp; // <-- UPDATED
+    const effStats = PlayerEngine.getEffectiveStats(player); 
+    if (player.vitals.hp <= 0) player.vitals.hp = effStats.exploration.maxHp; 
     
-    // --- NEW: Switch back to dark Biome Music! ---
+    // --- FIX: Refresh the active Exploration Engine stats reference upon departing ---
+    // This ensures newly installed engines, platings, prows, and immunities take effect instantly!
+    ExplorationEngine.boatStats = effStats.exploration;
+    
     const targetNode = world.nodes[globalY][globalX];
     MusicEngine.playBiome(BIOMES[targetNode.biomeId].id, createRng(world.seed + globalX + globalY));
 
@@ -918,7 +921,6 @@ function handleAttemptCast() {
 
             // Check if we are at the Myconid Colony AND using the Mycelial Hook
             if (targetNode.poi === 'myconid_colony' && equippedLure && equippedLure.id === 'lure_mycelial_hook') {
-                
                 HUD.logAction("The Mycelial Hook pulses. The deep loam begins to tremble...", "warn");
                 
                 const bossData = generateFishData({ bossId: 'vesper_bloom_leviathan', seed: Date.now() });
@@ -930,7 +932,6 @@ function handleAttemptCast() {
                 document.getElementById('z50-action').style.display = 'flex';
                 document.getElementById('z50-action').style.background = 'transparent';
 
-                // Send to minigame
                 FishingEngine.startCast(effStats, player.stats.stamina, castPool, 50, gameTimeMinutes);
                 FishingRenderer.open({ lureDataUrl: equippedLure.imageDataUrl || '', biome: currentBiome, tileId: tId });
                 
@@ -940,8 +941,34 @@ function handleAttemptCast() {
                     }
                 }, 6000);
                 
-                return; // Exit the normal cast function early!
+                return; 
             }
+            // --- NEW: CRYSTAL MUSEUM SUMMONING BYPASS ---
+            else if (targetNode.poi === 'crystal_museum' && equippedLure && equippedLure.id === 'lure_prismatic_geode_hook') {
+                HUD.logAction("The Prismatic Geode Hook flares. A brilliant rainbow refracts through the cavern...", "warn");
+                
+                const bossData = generateFishData({ bossId: 'geode_monarch', seed: Date.now() });
+                const bossInstance = generateFishInstance(bossData, createRng(Date.now()));
+                
+                const castPool = [bossInstance];
+                
+                currentState = STATE.FISHING;
+                document.getElementById('z50-action').style.display = 'flex';
+                document.getElementById('z50-action').style.background = 'transparent';
+
+                // Send to minigame (Locks maximum depth to 50m)
+                FishingEngine.startCast(effStats, player.stats.stamina, castPool, 50, gameTimeMinutes);
+                FishingRenderer.open({ lureDataUrl: equippedLure.imageDataUrl || '', biome: currentBiome, tileId: tId });
+                
+                setTimeout(() => {
+                    if (currentState === STATE.FISHING && FishingEngine.phase === 'SINKING') {
+                        if (!FishingEngine.evaluateBite()) handleEndFishing("The Monarch refused to emerge from its cavern.", "danger");
+                    }
+                }, 6000);
+                
+                return; // Exit cast early
+            }
+
             // --- END MYTHIC BYPASS ---
             
             // 1. Calculate Depth
@@ -1181,7 +1208,11 @@ function handleEndFishing(msg, type) {
                 isMythicConsumed = true;
                 HUD.logAction(`The ${lure.name} shatters after fulfilling its purpose!`, "warn");
             }
-            // (Future bosses will be checked here)
+            // --- NEW: Prismatic Geode Hook Shatter ---
+            else if (lure.id === 'lure_prismatic_geode_hook' && caughtId === 'geode_monarch') {
+                isMythicConsumed = true;
+                HUD.logAction(`The ${lure.name} shatters into brilliant crystal dust!`, "warn");
+            }
         }
 
         if (isMythicConsumed) {
@@ -1406,28 +1437,37 @@ function setupInputListeners() {
         }
     };
 
-    // ==========================================
+// ==========================================
 // DEBUG & CHEAT COMMANDS (Accessible via Browser Console)
 // ==========================================
+
+window.HelpCheats = function() {
+    console.log(`
+    🛠️ UNDERDARK FISHING - CHEAT MENU 🛠️
+    --------------------------------------------------
+    TeleportToPOI('poi_name')         - 'myconid_colony', 'crystal_museum', etc.
+    GiveCheatFish(amount, 'Size')     - Fills cargo. Sizes: 'Tiny', 'Small', 'Medium', 'Large', 'Massive'
+    GiveSpecificFish('family', 'Rarity', 'Size') - e.g., GiveSpecificFish('shark', 'Legendary', 'Massive')
+    AddGold(amount)                   - Adds gold.
+    SetStat('statName', value)        - e.g., SetStat('fishing', 10)
+    ClearCargo()                      - Empties your inventory.
+    RefillVitals()                    - Maxes out HP, Fuel, and Rations.
+    --------------------------------------------------
+    `);
+    return "Cheat menu loaded.";
+};
+
 window.TeleportToPOI = function(poiId = 'myconid_colony') {
     if (!world) return "❌ You must start a game first!";
-    
     for (let y = 0; y < world.height; y++) {
         for (let x = 0; x < world.width; x++) {
             if (world.nodes[y][x].poi === poiId) {
-                // Update coordinates
-                globalX = x;
-                globalY = y;
-                
-                // Discover the node
+                globalX = x; globalY = y;
                 const nodeKey = `${x},${y}`;
                 if (!discoveredNodes.includes(nodeKey)) discoveredNodes.push(nodeKey);
                 world.nodes[y][x].isDiscovered = true;
-                
-                // Reload the map
                 saveCurrentState();
                 loadLocalNode('warp');
-                
                 return `✨ Teleported to ${poiId} at coordinates [${x}, ${y}].`;
             }
         }
@@ -1437,29 +1477,151 @@ window.TeleportToPOI = function(poiId = 'myconid_colony') {
 
 window.GiveCheatFish = function(amount = 10, forcedSize = 'Massive') {
     if (!player) return "❌ You must start a game first!";
-    
     const effStats = PlayerEngine.getEffectiveStats(player);
     const spaceLeft = effStats.exploration.cargoSpace - player.inventory.length;
     const actualAmount = Math.min(amount, spaceLeft);
-    
     if (actualAmount <= 0) return "❌ Cargo Hold is full!";
     
     for(let i = 0; i < actualAmount; i++) {
         const fishData = generateFishData({ seed: Date.now() + i });
-        // Force the size to massive so it adds a ton of weight quickly for testing
         fishData.physical.sizeTier = forcedSize;
-        fishData.physical.weightRange.min = 500;
-        fishData.physical.weightRange.max = 1000;
-        
+        if (forcedSize === 'Massive') fishData.physical.weightRange = {min: 500, max: 1000};
         const instance = generateFishInstance(fishData, createRng(Date.now() + i));
         player.inventory.push(instance);
     }
+    if (currentState === STATE.HUB && HubUI.activeTab === 'compost') HubUI.renderActiveTab();
+    return `🐟 Added ${actualAmount} ${forcedSize} fish to your Cargo Hold.`;
+};
+
+window.GiveSpecificFish = function(family = 'shark', rarity = 'Legendary', sizeTier = 'Massive') {
+    if (!player) return "❌ You must start a game first!";
     
-    // Refresh UI if we are in the hub
-    if (currentState === STATE.HUB && HubUI.activeTab === 'compost') {
-        HubUI.renderActiveTab();
+    // 1. Generate the base species
+    const fishData = generateFishData({ seed: Date.now(), family: family });
+    fishData.physical.sizeTier = sizeTier;
+    
+    // Set appropriate weight ranges for the forced size
+    const wMap = { 'Tiny': [0.1, 2.5], 'Small': [2, 8], 'Medium': [7, 25], 'Large': [20, 150], 'Massive': [120, 800] };
+    fishData.physical.weightRange = { min: wMap[sizeTier][0], max: wMap[sizeTier][1] };
+
+    // 2. Rig the RNG to force the specific rarity
+    const riggedRng = createRng(Date.now());
+    const originalInt = riggedRng.int;
+    riggedRng.int = (min, max) => {
+        if (max === 100) {
+            if (rarity === 'Common') return 1;
+            if (rarity === 'Uncommon') return 60;
+            if (rarity === 'Rare') return 85;
+            if (rarity === 'Legendary') return 96;
+            if (rarity === 'Boss') return 100;
+        }
+        return originalInt(min, max);
+    };
+
+    const instance = generateFishInstance(fishData, riggedRng);
+    player.inventory.push(instance);
+    return `✨ Spawned a ${rarity} ${sizeTier} ${family} and placed it in your Cargo Hold!`;
+};
+
+window.AddGold = function(amount = 10000) {
+    if (!player) return "❌ You must start a game first!";
+    player.vitals.gold += amount;
+    if (currentState === STATE.HUB) HubUI.renderActiveTab();
+    return `💰 Added ${amount}g. You now have ${player.vitals.gold}g.`;
+};
+
+window.SetStat = function(statName, value) {
+    if (!player) return "❌ You must start a game first!";
+    if (player.stats[statName] !== undefined) {
+        player.stats[statName] = value;
+        return `📈 Set ${statName} to ${value}.`;
+    }
+    return `❌ Stat '${statName}' does not exist. Try: fishing, stamina, driving, crafting, bartering, intelligence.`;
+};
+
+window.ClearCargo = function() {
+    if (!player) return "❌ You must start a game first!";
+    player.inventory = player.inventory.filter(i => i.invType !== 'fish' && i.invType !== 'part');
+    if (currentState === STATE.HUB) HubUI.renderActiveTab();
+    return `🗑️ Cargo Hold cleared of all fish and parts.`;
+};
+
+window.RefillVitals = function() {
+    if (!player) return "❌ You must start a game first!";
+    const effStats = PlayerEngine.getEffectiveStats(player);
+    player.vitals.hp = effStats.exploration.maxHp;
+    player.vitals.fuel = 100;
+    player.vitals.rations = 20;
+    return `🍲 Vitals (HP, Fuel, Rations) restored to maximum.`;
+};
+
+// --- NEW: Settlement Teleportation & Discovery Tools ---
+
+window.ListSettlements = function() {
+    if (!world) return "❌ You must start a game first!";
+    
+    let list = "⚓ Active Settlements in this World:\n--------------------------------------------------\n";
+    let index = 1;
+    
+    for (let y = 0; y < world.height; y++) {
+        for (let x = 0; x < world.width; x++) {
+            const node = world.nodes[y][x];
+            if (node.hasSettlement) {
+                list += `${index}. "${node.settlementName}" [${x}, ${y}] — Biome: ${node.biomeId.toUpperCase()}\n`;
+                index++;
+            }
+        }
+    }
+    list += "--------------------------------------------------\nType TeleportToSettlement(number) or TeleportToSettlement('Name') to warp.";
+    return list;
+};
+
+window.TeleportToSettlement = function(nameOrIndex) {
+    if (!world) return "❌ You must start a game first!";
+    
+    const settlements = [];
+    for (let y = 0; y < world.height; y++) {
+        for (let x = 0; x < world.width; x++) {
+            const node = world.nodes[y][x];
+            if (node.hasSettlement) {
+                settlements.push(node);
+            }
+        }
     }
     
-    return `🐟 Added ${actualAmount} ${forcedSize} fish to your Cargo Hold.`;
+    if (settlements.length === 0) return "❌ No settlements found in this world!";
+    
+    let targetNode = null;
+    
+    // Resolve target by index number (1-based)
+    if (typeof nameOrIndex === 'number') {
+        const idx = nameOrIndex - 1;
+        if (idx >= 0 && idx < settlements.length) {
+            targetNode = settlements[idx];
+        }
+    } 
+    // Resolve target by partial string name matching
+    else if (typeof nameOrIndex === 'string') {
+        targetNode = settlements.find(s => s.settlementName.toLowerCase().includes(nameOrIndex.toLowerCase()));
+    } 
+    // Default: Teleport to the first settlement on the list
+    else {
+        targetNode = settlements[0];
+    }
+    
+    if (targetNode) {
+        globalX = targetNode.x;
+        globalY = targetNode.y;
+        
+        const nodeKey = `${globalX},${globalY}`;
+        if (!discoveredNodes.includes(nodeKey)) discoveredNodes.push(nodeKey);
+        world.nodes[globalY][globalX].isDiscovered = true;
+        
+        saveCurrentState();
+        loadLocalNode('warp');
+        return `⚓ Warp successful! Welcome to the docks of ${targetNode.settlementName} [${targetNode.x}, ${targetNode.y}].`;
+    }
+    
+    return `❌ Settlement not found! Type ListSettlements() to see valid names and numbers.`;
 };
 }

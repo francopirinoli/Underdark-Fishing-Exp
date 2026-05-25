@@ -120,7 +120,6 @@ export function generateGlobalMap(seed = Date.now(), discoveredNodes =[]) {
     // 5. Place POIs (Endgame Expansion)
     const deadEnds = { fungal: [], crystal: [], frozen: [], volcanic: [], abyssal: [] };
 
-    // Find all dead-end nodes
     for (let y = 0; y < MAP_H; y++) {
         for (let x = 0; x < MAP_W; x++) {
             const node = nodes[y][x];
@@ -130,26 +129,36 @@ export function generateGlobalMap(seed = Date.now(), discoveredNodes =[]) {
             if (node.exits.e) exits++;
             if (node.exits.w) exits++;
             
-            if (exits === 1 && deadEnds[node.biomeId]) {
-                deadEnds[node.biomeId].push(node);
-            }
+            if (exits === 1 && deadEnds[node.biomeId]) deadEnds[node.biomeId].push(node);
         }
     }
 
     // Place Myconid Colony
     if (deadEnds.fungal.length > 0) {
         const poiNode = rng.pick(deadEnds.fungal);
-        poiNode.poi = 'myconid_colony';
-        poiNode.name = "Spore-Grown Colony";
+        poiNode.poi = 'myconid_colony'; poiNode.name = "Spore-Grown Colony";
     } else {
-        // Fallback if no fungal dead end exists
         const allFungal = nodes.flat().filter(n => n.biomeId === 'fungal');
         if (allFungal.length > 0) {
             const poiNode = rng.pick(allFungal);
-            poiNode.poi = 'myconid_colony';
-            poiNode.name = "Spore-Grown Colony";
+            poiNode.poi = 'myconid_colony'; poiNode.name = "Spore-Grown Colony";
         }
     }
+
+    // --- NEW: Place Crystal Museum ---
+    if (deadEnds.crystal.length > 0) {
+        const poiNode = rng.pick(deadEnds.crystal);
+        poiNode.poi = 'crystal_museum'; poiNode.name = "The Crystal Museum";
+    } else {
+        const allCrystal = nodes.flat().filter(n => n.biomeId === 'crystal');
+        if (allCrystal.length > 0) {
+            const poiNode = rng.pick(allCrystal);
+            poiNode.poi = 'crystal_museum'; poiNode.name = "The Crystal Museum";
+        }
+    }
+    
+    // --- NEW: Generate Museum Slots ---
+    const museumSlots = generateMuseumSlots(createRng(seed + 404)); // Fixed salt
 
     // 6. Place Settlements
     let settlementsPlaced = 0;
@@ -171,8 +180,9 @@ export function generateGlobalMap(seed = Date.now(), discoveredNodes =[]) {
     let startX = Math.floor(MAP_W / 2);
     let startY = Math.floor(MAP_H / 2);
     
-    return { seed, width: MAP_W, height: MAP_H, nodes, startX, startY };
-} 
+    // --- FIX: Include museumSlots in the return object ---
+    return { seed, width: MAP_W, height: MAP_H, nodes, startX, startY, museumSlots };
+}
 
 // --- HELPER: PROCEDURAL NAMING ---
 function generateLakeName(biomeId, rng) {
@@ -227,4 +237,51 @@ export function generateSettlementName(biomeId, rng) {
         if (rng.chance(0.5)) return `The ${prefix} ${noun}`;
         else return `${prefix}'s ${noun}`;
     }
+}
+
+export function generateMuseumSlots(rng) {
+    const slots = [];
+    const families = ['fish', 'ray', 'shark', 'cephalopod', 'crustacean', 'deepsea', 'eel', 'jellyfish'];
+    const rarities = ['Common', 'Uncommon', 'Rare', 'Legendary'];
+    
+    // Hardcoded sizes from archetypes to ensure we never generate an impossible combination (e.g., "Tiny Shark")
+    const validSizes = {
+        'fish': ['Tiny', 'Small', 'Medium', 'Large'], 'shark': ['Medium', 'Large', 'Massive'],
+        'eel': ['Small', 'Medium', 'Large'], 'ray': ['Medium', 'Large', 'Massive'],
+        'crustacean': ['Tiny', 'Small', 'Medium'], 'jellyfish': ['Tiny', 'Small', 'Medium'],
+        'cephalopod': ['Small', 'Medium', 'Large'], 'deepsea': ['Medium', 'Large', 'Massive']
+    };
+
+    for (let i = 0; i < 40; i++) {
+        // Roll 1, 2, or 3 requirements
+        const numReqs = rng.chance(0.4) ? 1 : (rng.chance(0.7) ? 2 : 3);
+        const reqs = {};
+        
+        let f = rng.pick(families);
+        let s = rng.pick(validSizes[f]);
+        let r = rng.pick(rarities);
+
+        // Randomly pick which attributes to enforce
+        const pool = ['family', 'sizeTier', 'rarity'];
+        for (let k = pool.length - 1; k > 0; k--) {
+            const j = rng.int(0, k);
+            [pool[k], pool[j]] = [pool[j], pool[k]];
+        }
+
+        for(let j = 0; j < numReqs; j++) {
+            if (pool[j] === 'family') reqs.family = f;
+            if (pool[j] === 'sizeTier') reqs.sizeTier = s;
+            if (pool[j] === 'rarity') reqs.rarity = r;
+        }
+
+        // Build readable title
+        let titleParts = [];
+        if (reqs.rarity) titleParts.push(reqs.rarity);
+        if (reqs.sizeTier) titleParts.push(reqs.sizeTier);
+        if (reqs.family) titleParts.push(reqs.family.charAt(0).toUpperCase() + reqs.family.slice(1));
+        else titleParts.push("Specimen");
+
+        slots.push({ id: i, reqs: reqs, title: titleParts.join(' ') });
+    }
+    return slots;
 }

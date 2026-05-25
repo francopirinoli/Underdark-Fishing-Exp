@@ -109,14 +109,15 @@ export const ExplorationRenderer = {
         };
 
         const isMyconid = globalNode && globalNode.poi === 'myconid_colony';
+        const isMuseum = globalNode && globalNode.poi === 'crystal_museum'; // <-- NEW
 
         const colors = {
             [TILE.WATER]: hexToRgb(pal.water),[TILE.DEEP_WATER]: hexToRgb(pal.deepWater),
             [TILE.LAND]: hexToRgb(pal.land),
             [TILE.ROCK]: hexToRgb(pal.rock),
             [TILE.FLORA]: hexToRgb(pal.flora),
-            // --- FIX: Use a dark loam/dirt base for the colony instead of purple ---
-            [TILE.DOCK]: isMyconid ? hexToRgb('#18181B') : [120, 53, 15] 
+            // --- FIX: Tint the dock cyan if it's the Museum ---
+            [TILE.DOCK]: isMyconid ? hexToRgb('#18181B') : (isMuseum ? hexToRgb('#0369A1') : [120, 53, 15]) 
         };
 
         const imgData = offCtx.createImageData(this.offscreenMap.width, this.offscreenMap.height);
@@ -149,8 +150,11 @@ export const ExplorationRenderer = {
 
                         if (tileId === TILE.DOCK) {
                             if (isMyconid) {
-                                // Add dark root texture to the loam pad
                                 if ((dx + dy) % 2 === 0) { finalR -= 10; finalG -= 10; finalB -= 10; }
+                            } else if (isMuseum) {
+                                // Crisp, faceted crystal platform
+                                if (dx === 0 && dy === 0) { finalR += 20; finalG += 50; finalB += 80; }
+                                if ((dx + dy) % 3 === 0) { finalR -= 10; finalG -= 20; finalB -= 20; }
                             } else {
                                 if (dx === 0 || dy === 0) { finalR -= 20; finalG -= 10; finalB -= 5; } 
                                 if (dx === 1 && dy === 1) { finalR += 20; finalG += 10; } 
@@ -529,24 +533,18 @@ export const ExplorationRenderer = {
                 const time = Date.now() / 800;
                 const pulse = Math.sin(time) * 0.5;
 
-                // --- FIX: Pixel-perfect blocky circle renderer ---
                 const drawPixelCircle = (radius, color, offsetX = 0, offsetY = 0) => {
                     this.ctx.fillStyle = color;
                     const r = Math.round(radius);
                     for(let py = -r; py <= r; py++) {
                         const pxW = Math.round(Math.sqrt(r * r - py * py));
-                        // Multiply by 2 to match TILE_SIZE scale
                         this.ctx.fillRect((offsetX - pxW) * 2, (offsetY + py) * 2, pxW * 4, 2);
                     }
                 };
 
-                // Base purple cap
                 drawPixelCircle(9 + pulse, '#7E22CE');
-                
-                // Highlight cap (shifted up and left)
                 drawPixelCircle(6 + pulse, '#C084FC', -1, -1);
 
-                // Spore dots (Pixelated blocks)
                 this.ctx.fillStyle = '#BEF264';
                 [[-4, -5], [5, -3], [2, 6], [-6, 3], [0, -2], [-2, 2]].forEach(d => {
                     this.ctx.fillRect(d[0] * 2, d[1] * 2, 2, 2);
@@ -554,13 +552,60 @@ export const ExplorationRenderer = {
                 
                 this.ctx.restore();
 
-                // Toxic Green / Purple Glow Lights
-                activeLights.push({ x: dx, y: dy, radius: 150, color: 'rgba(74, 222, 128, 0.4)' }); 
-                activeLights.push({ x: dx, y: dy, radius: 70, color: 'rgba(168, 85, 247, 0.6)' }); 
+                // --- FIX: Draw Actual Colored Glow ---
+                const grad = this.ctx.createRadialGradient(dx, dy, 0, dx, dy, 150);
+                grad.addColorStop(0, 'rgba(168, 85, 247, 0.5)'); // Purple center
+                grad.addColorStop(0.5, 'rgba(74, 222, 128, 0.3)'); // Green halo
+                grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+                this.ctx.fillStyle = grad;
+                this.ctx.beginPath(); this.ctx.arc(dx, dy, 150, 0, Math.PI * 2); this.ctx.fill();
+
+                activeLights.push({ x: dx, y: dy, radius: 150 });
+
+            } else if (this.currentNode && this.currentNode.poi === 'crystal_museum') {
+                // --- RESTORED: Crystal Museum Dock Render ---
+                this.ctx.save();
+                this.ctx.translate(dx, dy);
+                
+                const time = Date.now() / 1000;
+                const glow = Math.sin(time * 2) * 0.2 + 0.8;
+
+                // Diamond Base
+                this.ctx.fillStyle = '#0284C7';
+                this.ctx.beginPath();
+                this.ctx.moveTo(0, -20); this.ctx.lineTo(20, 0); this.ctx.lineTo(0, 20); this.ctx.lineTo(-20, 0);
+                this.ctx.fill();
+
+                // Inner Bright Crystal
+                this.ctx.fillStyle = '#38BDF8';
+                this.ctx.beginPath();
+                this.ctx.moveTo(0, -12); this.ctx.lineTo(12, 0); this.ctx.lineTo(0, 12); this.ctx.lineTo(-12, 0);
+                this.ctx.fill();
+
+                // Center Core
+                this.ctx.fillStyle = `rgba(255, 255, 255, ${glow})`;
+                this.ctx.fillRect(-2, -2, 4, 4);
+                
+                this.ctx.restore();
+
+                // --- FIX: Draw Actual Colored Glow ---
+                const grad = this.ctx.createRadialGradient(dx, dy, 0, dx, dy, 180);
+                grad.addColorStop(0, 'rgba(56, 189, 248, 0.6)'); // Brilliant Cyan glare
+                grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+                this.ctx.fillStyle = grad;
+                this.ctx.beginPath(); this.ctx.arc(dx, dy, 180, 0, Math.PI * 2); this.ctx.fill();
+
+                activeLights.push({ x: dx, y: dy, radius: 180 });
 
             } else {
                 // Standard wooden dock light
-                activeLights.push({ x: dx, y: dy, radius: 120, color: 'rgba(251, 191, 36, 0.4)' });
+                const grad = this.ctx.createRadialGradient(dx, dy, 0, dx, dy, 120);
+                grad.addColorStop(0, 'rgba(251, 191, 36, 0.3)'); // Warm yellow lantern glow
+                grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+                this.ctx.fillStyle = grad;
+                this.ctx.beginPath(); this.ctx.arc(dx, dy, 120, 0, Math.PI * 2); this.ctx.fill();
+
+                activeLights.push({ x: dx, y: dy, radius: 120 });
             }
         }
 

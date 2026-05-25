@@ -97,7 +97,9 @@ export const PlayerEngine = {
             safehouses: {},
             // --- NEW: Endgame Progression Trackers ---
             endgameProgress: {
-                fungal: { totalCompostKg: 0, currentGoalIdx: 0 }
+                fungal: { totalCompostKg: 0, currentGoalIdx: 0 },
+                // --- FIX: Change filledSlots to an Object {} instead of an Array [] ---
+                crystal: { filledSlots: {}, curatorRating: 0, currentGoalIdx: 0 } 
             },
             gear: {
                 boat: starterBoat,

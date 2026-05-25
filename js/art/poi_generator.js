@@ -163,6 +163,117 @@ export function generatePoiArt(options = {}) {
     }
 
     // ==========================================
+    // POI 2: THE CRYSTAL MUSEUM (Grottos)
+    // ==========================================
+    else if (poiId === 'crystal_museum') {
+        const cBg = '#020617';       // Void
+        const cWall = '#0F172A';     // Deep slate
+        const cPillar = '#1E293B';   // Foreground stone
+        const cPillarHigh = '#334155';
+        
+        const cTankGlass = '#0284C7'; // Cyan glass
+        const cTankGlow = '#38BDF8';  
+        const cTankRim = '#94A3B8';   // Steel rim
+        
+        const cCrystal1 = '#818CF8';  // Indigo
+        const cCrystal2 = '#C084FC';  // Purple
+        const cCrystal3 = '#E879F9';  // Pink
+        const cCrystal4 = '#22D3EE';  // Cyan
+        
+        // Add neon colors to the outline exclusion list so they glow
+        glowExclusions.push(cTankGlass, cTankGlow, cCrystal1, cCrystal2, cCrystal3, cCrystal4);
+
+        // 1. Slate Cathedral Background
+        for (let y = 0; y < horizonY; y++) {
+            for (let x = 0; x < GRID_W; x++) {
+                // Vertical striated stone
+                let c = cBg;
+                if ((x + Math.floor(y/5)) % 6 < 3) c = cWall;
+                setBg(x, y, c);
+            }
+        }
+
+        // 2. Crystal Floor / Water
+        for (let y = horizonY; y < GRID_H; y++) {
+            for (let x = 0; x < GRID_W; x++) {
+                let c = cPillar;
+                if ((x - y) % 4 === 0) c = cPillarHigh; // Polished marble floor reflection
+                if (rng.chance(0.1)) c = rng.pick([cCrystal1, cCrystal4]); // Embedded floor crystals
+                setBg(x, y, c);
+            }
+        }
+
+        // 3. Background Crystal Spires
+        for (let i = 0; i < 12; i++) {
+            const sx = rng.int(10, GRID_W - 10);
+            const sh = rng.int(20, 50);
+            const sw = rng.int(4, 8);
+            const sColor = rng.pick([cCrystal1, cCrystal2, cCrystal4]);
+            
+            for (let y = horizonY; y >= horizonY - sh; y--) {
+                const taper = Math.max(1, Math.floor(sw * ((y - (horizonY - sh)) / sh)));
+                for (let x = -taper; x <= taper; x++) {
+                    let c = sColor;
+                    if (x === taper) c = cWall; // Shadow side
+                    if (x === -taper + 1) c = '#FFFFFF'; // Sharp glint
+                    setMg(sx + x, y, c);
+                }
+            }
+        }
+
+        // 4. The Suspended Geode Tanks
+        const drawTank = (cx, cy, w, h) => {
+            // Suspension chains
+            for (let y = 0; y < cy - h; y++) {
+                if (y % 3 !== 0) {
+                    setFg(cx - w + 2, y, cTankRim);
+                    setFg(cx + w - 2, y, cTankRim);
+                }
+            }
+            
+            // The Tank
+            for (let y = -h; y <= h; y++) {
+                for (let x = -w; x <= w; x++) {
+                    let c = cTankGlass;
+                    // Shiny glass diagonals
+                    if ((x + y) % 8 === 0 || (x + y) % 8 === 1) c = cTankGlow;
+                    
+                    // Suspended specimens (random colored blobs)
+                    if (Math.abs(x) < w - 4 && Math.abs(y) < h - 4) {
+                        if (rng.chance(0.05)) c = rng.pick([cCrystal1, cCrystal2, cCrystal3, '#FFFFFF']);
+                    }
+                    
+                    // Metallic Geode Rim
+                    if (Math.abs(y) > h - 2 || Math.abs(x) > w - 2) c = cTankRim;
+                    if (Math.abs(y) === h || Math.abs(x) === w) c = cPillarHigh;
+                    
+                    setFg(cx + x, cy + y, c);
+                }
+            }
+        };
+
+        // Draw 3 Massive Tanks
+        drawTank(60, 30, 15, 20);
+        drawTank(160, 25, 25, 15);
+        drawTank(260, 35, 18, 22);
+
+        // 5. Foreground Pillars & Museum Walkway
+        for (let x = 110; x <= 210; x += 100) {
+            for (let y = 10; y < GRID_H; y++) {
+                const pw = 6;
+                for (let px = -pw; px <= pw; px++) {
+                    let c = cPillar;
+                    if (px > 2) c = cPillarHigh;
+                    if (px === pw) c = cWall;
+                    // Etched runes
+                    if (y % 8 === 0 && Math.abs(px) < 2) c = cCrystal4;
+                    setFg(x + px, y, c);
+                }
+            }
+        }
+    }
+
+    // ==========================================
     // OUTLINE PASS & FINAL RENDER
     // ==========================================
     const outlineGrid = Array(GRID_H).fill(null).map(() => Array(GRID_W).fill(null));

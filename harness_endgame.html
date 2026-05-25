@@ -34,7 +34,7 @@
 
         #init-overlay { position: fixed; inset: 0; background: rgba(2, 6, 23, 0.95); z-index: 2000; display: flex; flex-direction: column; align-items: center; justify-content: center; }
         
-        /* FIX: Removed pointer-events: none so the mouse wheel can scroll the reel power! */
+        /* Ensures the mouse wheel can scroll the reel power! */
         #fishing-container { position: relative; z-index: 3000; } 
         
         .grid-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
@@ -85,9 +85,13 @@
 
                     <div class="dashboard-group">
                         <h3>Boss Entity Previews</h3>
+                        <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
+                            <button class="btn" id="btn-art-boss" style="flex:1;">Vesper-Bloom (Ph 1)</button>
+                            <button class="btn" id="btn-art-lure" style="flex:1;">Mycelial Hook</button>
+                        </div>
                         <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem;">
-                            <button class="btn" id="btn-art-boss" style="flex:1;">Vesper-Bloom (Phase 1)</button>
-                            <button class="btn" id="btn-art-lure" style="flex:1;">The Mycelial Hook</button>
+                            <button class="btn" id="btn-art-boss-crystal" style="flex:1; border-color: #38BDF8; color: #38BDF8;">Geode Monarch (Ph 1)</button>
+                            <button class="btn" id="btn-art-lure-crystal" style="flex:1; border-color: #38BDF8; color: #38BDF8;">Prismatic Geode Hook</button>
                         </div>
                         <div style="text-align: center;">
                             <img id="preview-boss" src="" style="width: 192px; height: 192px; border: 1px solid var(--border); border-radius: 4px; background: #000; image-rendering: pixelated; display: none;" alt="Boss Preview">
@@ -118,14 +122,51 @@
 
                     <!-- CRYSTAL -->
                     <div class="dashboard-group">
-                        <h3 style="color: #60A5FA;">💎 Crystal Museum (Grottos)</h3>
+                        <h3 style="color: #38BDF8;">💎 Crystal Museum (Grottos)</h3>
                         <div style="display:flex; justify-content:space-between; margin-bottom:0.2rem;">
                             <span>Curator Rating:</span>
                             <span style="color:var(--cyan-glow); font-weight:bold;" id="sim-crystal-val">0 / 10,000 pts</span>
                         </div>
-                        <div class="progress-bar"><div class="progress-fill" id="sim-crystal-bar" style="width: 0%; background: #60A5FA;"></div></div>
+                        <div class="progress-bar"><div class="progress-fill" id="sim-crystal-bar" style="width: 0%; background: #38BDF8;"></div></div>
                         <button class="btn" id="btn-sim-crystal" style="width: 100%; margin-top: 1rem;">Submit Random Fish (Score: ~500)</button>
                         <div id="sim-crystal-log" style="font-size: 0.85rem; color: var(--muted); margin-top: 0.5rem; min-height: 1.2rem;"></div>
+                    </div>
+
+                    <!-- ICE -->
+                    <div class="dashboard-group">
+                        <h3 style="color: #E0E7FF;">❄️ Anglers Club (Frozen Fjord)</h3>
+                        <div style="display:flex; justify-content:space-between; margin-bottom:0.2rem;">
+                            <span>Club Rank:</span>
+                            <span style="color:var(--gold-warn); font-weight:bold;" id="sim-ice-rank">Rank D</span>
+                        </div>
+                        <div style="display:flex; justify-content:space-between; margin-bottom:0.2rem;">
+                            <span>Club Points:</span>
+                            <span style="color:var(--cyan-glow); font-weight:bold;" id="sim-ice-val">0 / 1,001 pts</span>
+                        </div>
+                        <div class="progress-bar"><div class="progress-fill" id="sim-ice-bar" style="width: 0%; background: #E0E7FF;"></div></div>
+                        <button class="btn" id="btn-sim-ice" style="width: 100%; margin-top: 1rem;">Complete Achievement (+50 pts)</button>
+                    </div>
+
+                    <!-- LAVA -->
+                    <div class="dashboard-group">
+                        <h3 style="color: #FCA5A5;">🌋 Aquatic Arena (Sulphur Springs)</h3>
+                        <div style="display:flex; justify-content:space-between; margin-bottom:0.2rem;">
+                            <span>Tournament Round:</span>
+                            <span style="color:var(--cyan-glow); font-weight:bold;" id="sim-lava-val">0 / 10</span>
+                        </div>
+                        <div class="progress-bar"><div class="progress-fill" id="sim-lava-bar" style="width: 0%; background: #EF4444;"></div></div>
+                        <button class="btn" id="btn-sim-lava" style="width: 100%; margin-top: 1rem;">Simulate Autobattler Win</button>
+                    </div>
+
+                    <!-- VOID -->
+                    <div class="dashboard-group" style="grid-column: span 2;">
+                        <h3 style="color: #C084FC;">🌌 Mage Tower (Abyssal Trench)</h3>
+                        <div style="display:flex; justify-content:space-between; margin-bottom:0.2rem;">
+                            <span>Whirlpool Telemetry Data:</span>
+                            <span style="color:var(--cyan-glow); font-weight:bold;" id="sim-void-val">0 / 5 Breaches</span>
+                        </div>
+                        <div class="progress-bar"><div class="progress-fill" id="sim-void-bar" style="width: 0%; background: #C084FC;"></div></div>
+                        <button class="btn" id="btn-sim-void" style="width: 100%; margin-top: 1rem;">Enter Void Whirlpool</button>
                     </div>
                 </div>
             </div>
@@ -137,7 +178,6 @@
                 <h2>Boss Combat Execution</h2>
                 <p class="muted">Triggers the fishing minigame directly using heavily skewed "Boss" physics parameters to iterate on tuning.</p>
 
-                <!-- NEW: Loadout and Stat Tuner -->
                 <div class="grid-2col" style="margin-bottom: 1.5rem;">
                     <div class="dashboard-group" style="margin: 0;">
                         <h3>Player Stats Tuning</h3>
@@ -199,13 +239,13 @@
         import { FishingEngine } from './js/fishing/fishing_engine.js';
         import { FishingRenderer } from './js/fishing/fishing_renderer.js';
         import { generateSettlementArt } from './js/art/settlement_generator.js';
+        import { generatePoiArt } from './js/art/poi_generator.js';
         import { generateBossArt } from './js/art/boss_generator.js';
+        import { generateMythicLure } from './js/art/mythic_lure_generator.js';
         import { generateFishData, generateFishInstance } from './js/data/fish_data_generator.js';
         import { generateRodData } from './js/data/rod_data_generator.js';
         import { createRng } from './js/util/rng.js';
         import { getRarityColor } from './js/util/utils.js';
-        import { generatePoiArt } from './js/art/poi_generator.js';
-        import { generateMythicLure } from './js/art/mythic_lure_generator.js';
 
         // ==========================================
         // SYSTEM INIT & TAB LOGIC
@@ -222,10 +262,8 @@
             AudioEngine.setSfxVolume(0.5);
             SFX.init();
             
-            // Init the Fishing Renderer inside our hidden container
             FishingRenderer.init(document.getElementById('fishing-container'));
             
-            // Create the Test Player
             testPlayer = PlayerEngine.createPlayer();
             updateTestPlayerStats();
             rollTestRod();
@@ -234,7 +272,6 @@
             document.getElementById('main-content').style.filter = 'none';
         });
 
-        // Tab Switching
         document.querySelectorAll('.tab-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -258,33 +295,54 @@
             let art;
             if (biomeId === 'fungal') {
                 art = generatePoiArt({ poiId: 'myconid_colony', rng: createRng(Date.now()) });
+            } else if (biomeId === 'crystal') {
+                art = generatePoiArt({ poiId: 'crystal_museum', rng: createRng(Date.now()) });
             } else {
                 art = generateSettlementArt({ biomeId: biomeId });
             }
             document.getElementById('preview-poi').src = art.imageDataUrl;
         }
 
-        let previewPhase = 1;
+        let previewPhaseFungal = 1;
         document.getElementById('btn-art-boss').onclick = () => {
             if(AudioEngine.isInitialized) SFX.playUIHover();
             const rng = createRng(Date.now());
-            const art = generateBossArt({ bossId: 'vesper_bloom_leviathan', rng, phase: previewPhase });
-            
+            const art = generateBossArt({ bossId: 'vesper_bloom_leviathan', rng, phase: previewPhaseFungal });
             const img = document.getElementById('preview-boss');
             img.src = art.imageDataUrl;
             img.style.display = 'inline-block';
-            
-            document.getElementById('btn-art-boss').innerText = `Vesper-Bloom (Phase ${previewPhase})`;
-            
-            previewPhase++;
-            if (previewPhase > 3) previewPhase = 1;
+            document.getElementById('btn-art-boss').innerText = `Vesper-Bloom (Ph ${previewPhaseFungal})`;
+            previewPhaseFungal++;
+            if (previewPhaseFungal > 3) previewPhaseFungal = 1;
         };
 
         document.getElementById('btn-art-lure').onclick = () => {
             if(AudioEngine.isInitialized) SFX.playUIHover();
             const rng = createRng(Date.now());
             const art = generateMythicLure({ lureId: 'mycelial_hook', rng });
-            const img = document.getElementById('preview-boss'); // Reuse the same image box
+            const img = document.getElementById('preview-boss'); 
+            img.src = art.imageDataUrl;
+            img.style.display = 'inline-block';
+        };
+
+        let previewPhaseCrystal = 1;
+        document.getElementById('btn-art-boss-crystal').onclick = () => {
+            if(AudioEngine.isInitialized) SFX.playUIHover();
+            const rng = createRng(Date.now());
+            const art = generateBossArt({ bossId: 'geode_monarch', rng, phase: previewPhaseCrystal });
+            const img = document.getElementById('preview-boss');
+            img.src = art.imageDataUrl;
+            img.style.display = 'inline-block';
+            document.getElementById('btn-art-boss-crystal').innerText = `Geode Monarch (Ph ${previewPhaseCrystal})`;
+            previewPhaseCrystal++;
+            if (previewPhaseCrystal > 3) previewPhaseCrystal = 1;
+        };
+
+        document.getElementById('btn-art-lure-crystal').onclick = () => {
+            if(AudioEngine.isInitialized) SFX.playUIHover();
+            const rng = createRng(Date.now());
+            const art = generateMythicLure({ lureId: 'prismatic_geode_hook', rng });
+            const img = document.getElementById('preview-boss'); 
             img.src = art.imageDataUrl;
             img.style.display = 'inline-block';
         };
@@ -292,7 +350,6 @@
         // ==========================================
         // TAB 2: POI SIMULATOR LOGIC
         // ==========================================
-        // Simulates `player.endgameProgress`
         const progress = { fungal: 0, crystal: 0, ice: 0, lava: 0, void: 0 };
 
         const updateBar = (id, val, max, suffix = '') => {
@@ -308,6 +365,13 @@
             if (progress.fungal === 5000) document.getElementById('sim-fungal-log').innerHTML = "<span style='color: #A855F7'>Quest Complete! Unlocked: The Mycelial Hook</span>";
         };
 
+        document.getElementById('btn-sim-crystal').onclick = () => {
+            if(AudioEngine.isInitialized) SFX.playUISelect();
+            progress.crystal += 500;
+            updateBar('crystal', progress.crystal, 10000, 'pts');
+            if (progress.crystal >= 10000) document.getElementById('sim-crystal-log').innerHTML = "<span style='color: #A855F7'>Quest Complete! Unlocked: Prismatic Geode Hook</span>";
+        };
+
         // ==========================================
         // TAB 3: BOSS COMBAT SIMULATOR
         // ==========================================
@@ -317,7 +381,6 @@
             logBox.scrollTop = logBox.scrollHeight;
         }
         
-        // --- STAT TUNER ---
         const statKeys = ['fishing', 'stamina', 'driving'];
         function updateTestPlayerStats() {
             if (!testPlayer) return;
@@ -329,12 +392,9 @@
         }
         
         statKeys.forEach(k => {
-            document.getElementById(`sim-stat-${k}`).addEventListener('input', () => {
-                updateTestPlayerStats();
-            });
+            document.getElementById(`sim-stat-${k}`).addEventListener('input', () => updateTestPlayerStats());
         });
 
-        // --- ROD TUNER ---
         function rollTestRod() {
             if (!testPlayer) return;
             SFX.playUISelect();
@@ -355,9 +415,7 @@
         }
         document.getElementById('btn-roll-rod').addEventListener('click', rollTestRod);
 
-        // --- BOSS GENERATOR ---
         function createMockBoss(id, name, stamina, speed, weight) {
-            // Provide a generic fallback for the buttons that aren't the Fungal Boss yet
             return {
                 id: id,
                 identity: { name: name, family: 'deepsea', rarity: 'Boss' },
@@ -367,7 +425,7 @@
                 environment: { depthPref: 'Bottom-feeder' },
                 actualWeight: weight,
                 invType: 'fish',
-                art: generateDeepSea({ rng: createRng(Date.now()) }) // Use placeholder art
+                art: generateDeepSea({ rng: createRng(Date.now()) }) 
             };
         }
 
@@ -378,10 +436,8 @@
             updateTestPlayerStats();
             const effStats = PlayerEngine.getEffectiveStats(testPlayer);
             
-            // Pass gameTimeMinutes as 480 (8 AM)
             FishingEngine.startCast(effStats, testPlayer.stats.stamina, [bossData], 50, 480);
             
-            // Auto-trigger the bite immediately to bypass sinking phase
             FishingEngine.phase = 'BITE';
             FishingEngine.fishData = bossData;
             FishingEngine.hookTimerMs = 5000;
@@ -395,7 +451,6 @@
             gameLoopId = requestAnimationFrame(combatLoop);
         };
 
-        // Link the Buttons
         document.getElementById('btn-fight-fungal').onclick = () => {
             const bossData = generateFishData({ bossId: 'vesper_bloom_leviathan', seed: Date.now() });
             const bossInstance = generateFishInstance(bossData, createRng(Date.now()));
@@ -407,10 +462,8 @@
         document.getElementById('btn-fight-lava').onclick = () => startBossFight(createMockBoss('boss_lava', 'Ignis-Gorged Serpentine', 350, 45, 2200));
         document.getElementById('btn-fight-void').onclick = () => startBossFight(createMockBoss('boss_void', 'Void-Bound Aboleth', 380, 55, 2800));
 
-        // Standalone Input Handler for the combat harness
         let isReeling = false;
         window.addEventListener('mousedown', (e) => { 
-            // Don't trigger reel if clicking UI buttons
             if(e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT') return;
             if(isFishing) isReeling = true; 
             if(isFishing && FishingEngine.phase === 'BITE') FishingEngine.attemptHook(); 
@@ -424,7 +477,6 @@
             }
         });
         window.addEventListener('keyup', (e) => { if(e.code === 'Space') isReeling = false; });
-        
         window.addEventListener('wheel', (e) => { 
             if(isFishing && FishingEngine.phase === 'FIGHT') {
                 e.preventDefault();
@@ -445,7 +497,6 @@
                 FishingRenderer.close();
                 isFishing = false;
                 
-                // Cleanup SFX
                 SFX.updateReel(false);
                 SFX.updateTension(0);
                 if (FishingEngine.phase === 'CAUGHT') SFX.playCatchSuccess();

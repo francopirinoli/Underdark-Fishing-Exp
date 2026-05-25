@@ -50,7 +50,9 @@ export const TooltipUI = {
             if (invType === 'fish') subtitle = `${target.identity?.rarity || 'Common'} ${target.identity?.family ? target.identity.family.charAt(0).toUpperCase() + target.identity.family.slice(1) : 'Fish'}`;
             else if (invType === 'rod') subtitle = `${target.identity?.rarity || 'Common'} Fishing Rod`;
             else if (invType === 'boat') subtitle = `${target.identity?.rarity || 'Common'} Boat Hull`;
-            else if (invType === 'upgrade') subtitle = `Boat Upgrade`;
+            else if (invType === 'upgrade' || (target.id && target.id.startsWith('upg_'))) {
+                subtitle = `Boat Upgrade`;
+            }
             else if (invType === 'potion') subtitle = `Alchemical Draught`;
             else if (invType === 'bait') subtitle = `Targeted Bait`;
             else if (invType === 'lure') {
@@ -172,12 +174,13 @@ export const TooltipUI = {
                     <div style="display:flex; justify-content:space-between;"><span>Rarity Boost:</span> <span style="color:#22C55E;">+${target.rarityBoostPct || 0}%</span></div>
                 `;
             } 
-            else if (invType === 'upgrade') {
+            // --- FIX: Add ID-prefix fallback for upgrade description tooltips ---
+            else if (invType === 'upgrade' || (target.id && target.id.startsWith('upg_'))) {
                 html += `
                     <div style="display:flex; justify-content:space-between; margin-top:0.2rem; margin-bottom:0.5rem;"><span>Slot:</span> <span style="color:#22D3EE; text-transform:uppercase;">${target.slot || '?'}</span></div>
                     <p style="margin:0; font-size:0.95rem; line-height:1.4;">${target.desc || item.desc || ''}</p>
                 `;
-            } 
+            }
             else if (invType === 'consumable' || invType === 'chest' || invType === 'chest_encounter') {
                 html += `<p style="margin:0; font-size:0.95rem; line-height:1.4;">${target.desc || item.desc || 'A mysterious object.'}</p>`;
             } 

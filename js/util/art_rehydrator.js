@@ -54,6 +54,16 @@ export const ArtRehydrator = {
                 if (entry.speciesData) this.rehydrateItem(entry.speciesData);
             }
         }
+
+        // --- NEW: Rehydrate fish stored in the Crystal Museum Tanks ---
+        if (player.endgameProgress && player.endgameProgress.crystal && player.endgameProgress.crystal.filledSlots) {
+            const slots = player.endgameProgress.crystal.filledSlots;
+            if (!Array.isArray(slots)) { // Ensure it's the new Object format
+                for (const slotId in slots) {
+                    this.rehydrateItem(slots[slotId]);
+                }
+            }
+        }
     },
 
     rehydrateItem(item) {
@@ -62,13 +72,23 @@ export const ArtRehydrator = {
 
         try {
             if (item.invType === 'boat' || (item.art && item.art.boatType)) {
-                // --- FIX: Pass the boatType back in so the RNG sequence doesn't shift! ---
                 const savedType = item.art ? item.art.boatType : undefined;
                 const b = generateBoatData({ seed: safeSeed, boatType: savedType });
                 
                 if (!item.art) item.art = {};
                 item.art.profileDataUrl = b.art.profileDataUrl;
                 item.art.topDownDataUrl = b.art.topDownDataUrl;
+
+                // --- FIX: Recursively rehydrate all active upgrades currently equipped on this hull ---
+                if (item.upgrades) {
+                    for (const slotKey in item.upgrades) {
+                        const upg = item.upgrades[slotKey];
+                        if (upg) {
+                            upg.invType = 'upgrade'; // Ensure category safety
+                            this.rehydrateItem(upg);
+                        }
+                    }
+                }
             } 
             else if (item.invType === 'rod' || (item.art && item.art.reel)) {
                 const r = generateRodData({ seed: safeSeed });
@@ -93,8 +113,8 @@ export const ArtRehydrator = {
                 const c = generateConsumable({ id: item.id, rng, seed: safeSeed });
                 item.imageDataUrl = c.imageDataUrl;
             }
-            // --- NEW: UPGRADE REHYDRATION ---
-            else if (item.invType === 'upgrade') {
+            // --- NEW: UPGRADE REHYDRATION (FIX: Added ID-prefix fallback) ---
+            else if (item.invType === 'upgrade' || (item.id && item.id.startsWith('upg_'))) {
                 const rng = createRng(safeSeed);
                 const u = generateUpgrade({ id: item.id, rng, seed: safeSeed });
                 item.imageDataUrl = u.imageDataUrl;

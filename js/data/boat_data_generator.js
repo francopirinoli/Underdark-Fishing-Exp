@@ -7,6 +7,7 @@
 
 import { createRng } from '../util/rng.js';
 import { generateBoat } from '../art/boat_generator.js';
+import { generateUpgrade } from '../art/upgrade_generator.js'; // <-- ADD THIS IMPORT
 
 // --- RARITY SCALING ---
 // Higher rarity represents better base craftsmanship and materials
@@ -102,6 +103,8 @@ export function generateBoatData(options = {}) {
     }
 
  // 4. Set Base Upgrades with fully qualified starting properties
+    const lanternArt = generateUpgrade({ id: 'upg_lantern_oil', rng: rng, seed: seed });
+
     const upgrades = {
         plating: null, 
         engine: null, 
@@ -111,10 +114,12 @@ export function generateBoatData(options = {}) {
             name: 'Oil Lantern', 
             slot: 'lantern', 
             type: 'upgrade', 
+            invType: 'upgrade', // Force standard invType
             basePrice: 100, 
             desc: 'Flickering oil light. Light radius 250px.', 
             lightRadius: 250, 
-            fuelDrainRate: 1.0 
+            fuelDrainRate: 1.0,
+            imageDataUrl: lanternArt.imageDataUrl // <-- FIX: Assign the rendered image!
         },
         storage: null 
     };

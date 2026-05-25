@@ -245,7 +245,8 @@ export const FishingEngine = {
             
             // --- NEW: Boss Strict Timers ---
             if (this.fishData.identity.rarity === 'Boss') {
-                if (this.fishData.id === 'vesper_bloom_leviathan') duration = 15.0; // Exact 15s window
+                if (this.fishData.id === 'vesper_bloom_leviathan') duration = 15.0; // 15s for Fungal
+                else if (this.fishData.id === 'geode_monarch') duration = 12.0;       // 12s for Crystal
                 else duration = 12.0; // Standard boss fallback
             }
 
@@ -269,10 +270,14 @@ export const FishingEngine = {
             let duration = getRandomInRange(1.0, 2.5);
 
             if (this.ai.state === 'SECOND_WIND') {
-                // --- NEW: Boss Recovery Penalty ---
+                // --- NEW: Boss Recovery Penalties ---
                 if (this.fishData.identity.rarity === 'Boss') {
-                    // The player failed the tight window! The Boss recovers 50% stamina and enrages.
-                    this.fishStamina = this.maxFishStamina * 0.5; 
+                    // Determine how much stamina the specific boss recovers upon player timeout
+                    if (this.fishData.id === 'geode_monarch') {
+                        this.fishStamina = this.maxFishStamina * 0.4; // 40% recovery for Crystal
+                    } else {
+                        this.fishStamina = this.maxFishStamina * 0.5; // 50% recovery for Fungal
+                    }
                     nextState = 'THRASH';
                     duration = getRandomInRange(1.5, 3.0);
                 } else {
@@ -280,6 +285,7 @@ export const FishingEngine = {
                     duration = getRandomInRange(1.0, 2.0);
                 }
             }
+
             else if (fishStamPct < 0.20 && fishStamPct > 0) {
                 this.ai.isResting = false;
                 if (slack) {
@@ -369,6 +375,8 @@ _applyPhysics(dt, isReeling) {
         if (this.ai.state === 'SECOND_WIND' && this.fishData.identity.rarity === 'Boss') {
             if (this.fishData.id === 'vesper_bloom_leviathan') {
                 this.currentTolerance = 2.5; // Extremely tight
+            } else if (this.fishData.id === 'geode_monarch') {
+                this.currentTolerance = 2.0; // Paper-thin ±2% for Crystal Crab
             } else {
                 this.currentTolerance = 2.0; // Fallback
             }
@@ -381,14 +389,22 @@ _applyPhysics(dt, isReeling) {
             let wobbleSpeed = fishSpeed * 0.025; 
             let wobbleWidth = fishSpeed * 0.12 * fishAggro; 
             
-            // --- NEW: Boss Wobble Overrides during Second Wind ---
+            // --- NEW: Boss Wobble & Sweep Overrides during Second Wind ---
             if (this.ai.state === 'SECOND_WIND' && this.fishData.identity.rarity === 'Boss') {
-                wobbleSpeed *= 2.5; // Drifts rapidly across the meter
-                wobbleWidth = 35;   // Wide sweep distance
+                if (this.fishData.id === 'vesper_bloom_leviathan') {
+                    wobbleSpeed *= 2.5; // Rapid drift
+                    wobbleWidth = 35;   // Wide sweep distance
+                    const wobble = Math.sin(timeSec * wobbleSpeed) * wobbleWidth;
+                    finalTargetSweet = clamp(this.targetSweetSpot + wobble, 5, 100);
+                } else if (this.fishData.id === 'geode_monarch') {
+                    // CRYSTAL SWEEP: Pure, high-speed, smooth trigonometric glide back and forth
+                    const sweepSpeed = 8.0; 
+                    finalTargetSweet = 50 + Math.sin(timeSec * sweepSpeed) * 42; // Sweeps smoothly between 8% and 92%
+                }
+            } else {
+                const wobble = Math.sin(timeSec * wobbleSpeed) * wobbleWidth;
+                finalTargetSweet = clamp(this.targetSweetSpot + wobble, 5, 100);
             }
-            
-            const wobble = Math.sin(timeSec * wobbleSpeed) * wobbleWidth;
-            finalTargetSweet = clamp(this.targetSweetSpot + wobble, 5, 100);
         }
 
         let shiftSpeed = 1.5 + (fishSpeed * 0.015); 

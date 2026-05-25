@@ -49,6 +49,7 @@ export const MusicEngine = {
     parts: {},
     currentBiome: null,
     isInitialized: false,
+    activePlayId: 0, // --- NEW: Unique request token tracking ---
     
     echoDelay: null,
     longDelay: null,
@@ -207,7 +208,16 @@ export const MusicEngine = {
             return;
         }
         
+        // --- NEW: Generate a unique ID for this specific play request ---
+        const playId = ++this.activePlayId; 
+        
         await this.init(); 
+        
+        // --- NEW: Abort if a newer request was made while we were initializing ---
+        if (playId !== this.activePlayId) {
+            console.log(`[MusicEngine] Aborting obsolete play request for biome: ${biomeId}`);
+            return;
+        }
         
         this.stop();
         this.currentBiome = biomeId;
@@ -218,6 +228,12 @@ export const MusicEngine = {
         try {
             const biomeModule = await import(`./biomes/${biomeId}_music.js`);
             
+            // --- NEW: Check once more after the import before scheduling tracks ---
+            if (playId !== this.activePlayId) {
+                console.log(`[MusicEngine] Aborting late play request for biome: ${biomeId}`);
+                return;
+            }
+
             // Defensive check to prevent crashes if synths failed to initialize
             if (!this.synths || !this.synths.noiseTape) {
                 console.warn("⚠️ Music synths not initialized. Aborting playback.");

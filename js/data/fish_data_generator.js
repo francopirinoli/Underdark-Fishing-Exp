@@ -131,6 +131,32 @@ export function generateFishData(options = {}) {
         };
     }
 
+    // --- NEW: BOSS DATA INTERCEPT (Crystal) ---
+    if (options.bossId === 'geode_monarch') {
+        const artPhase1 = generateBossArt({ bossId: 'geode_monarch', rng: artRng, phase: 1 });
+        const artPhase2 = generateBossArt({ bossId: 'geode_monarch', rng: artRng, phase: 2 });
+        const artPhase3 = generateBossArt({ bossId: 'geode_monarch', rng: artRng, phase: 3 });
+        
+        return {
+            id: 'geode_monarch', 
+            seed: seed,
+            identity: { name: 'The Geode Monarch', family: 'crustacean', rarity: 'Boss' },
+            art: { 
+                imageDataUrl: artPhase1.imageDataUrl, 
+                // Store all 3 generated phases for dynamic combat swaps
+                phaseUrls: { 1: artPhase1.imageDataUrl, 2: artPhase2.imageDataUrl, 3: artPhase3.imageDataUrl },
+                palette: 'Prismatic', metadata: {} 
+            },
+            environment: { biomes: ['crystal'], depthPref: 'Bottom-feeder', tempPref: 0, activeHours: 'Always Active' },
+            // Perfect match for the Prismatic Geode Hook (+80 Color, -50 Sound, +95 Light, +70 Weight)
+            lurePrefs: { color: 80, sound: -50, light: 95, weight: 70, tolerance: 0.15 }, 
+            physical: { sizeTier: 'Massive', weightRange: { min: 450.0, max: 650.0 } },
+            // Rapid attack speed (60), heavy armor, narrow optimal reel spot (55%)
+            combat: { stamina: 300, speed: 60, aggression: 0.75, hookWindowMs: 2000, optimalReel: 55 },
+            economy: { pricePerKg: 15.0, baseValue: 15000, baseXp: 500 }
+        };
+    }
+
     let availableFamilies = Object.keys(ART_GENERATORS);
     if (options.biomeId && options.biomeId !== 'abyssal') {
         availableFamilies = availableFamilies.filter(f => f !== 'deepsea');

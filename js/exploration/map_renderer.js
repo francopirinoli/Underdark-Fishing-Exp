@@ -86,7 +86,22 @@ export function renderGlobalMap(canvas, globalMap, biomes, selectedNode, incompl
                 if (node.exits.e) { ctx.moveTo(cx, cy); ctx.lineTo(cx + tileW / 2, cy); }
                 ctx.stroke();
 
-                if (node.hasSettlement) {
+                // --- NEW: POI Icons ---
+                if (node.poi === 'myconid_colony') {
+                    ctx.fillStyle = '#4ADE80'; 
+                    ctx.beginPath(); ctx.arc(cx, cy, tileW * 0.25, 0, Math.PI * 2); ctx.fill();
+                    ctx.fillStyle = '#020617'; ctx.font = `bold ${tileH * 0.4}px "Courier New", monospace`;
+                    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('🍄', cx, cy + 1);
+                } 
+                // --- NEW: Crystal Museum Icon ---
+                else if (node.poi === 'crystal_museum') {
+                    ctx.fillStyle = '#38BDF8'; // Bright Cyan
+                    ctx.beginPath(); ctx.arc(cx, cy, tileW * 0.25, 0, Math.PI * 2); ctx.fill();
+                    ctx.fillStyle = '#020617'; ctx.font = `bold ${tileH * 0.4}px "Courier New", monospace`;
+                    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('🏛️', cx, cy + 1); // Museum/Bank Icon
+                }
+                // Standard Settlement
+                else if (node.hasSettlement) {
                     ctx.fillStyle = '#FBBF24'; 
                     ctx.beginPath();
                     ctx.arc(cx, cy, tileW * 0.25, 0, Math.PI * 2);

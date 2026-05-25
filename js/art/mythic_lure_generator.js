@@ -26,6 +26,12 @@ export function generateMythicLure(options = {}) {
         if (x >= 0 && x < GRID_SIZE && y >= 0 && y < GRID_SIZE) grid[y][x] = colorCode;
     }
 
+    // --- FIX: Add forcePixel helper definition ---
+    function forcePixel(x, y, colorCode) {
+        x = Math.round(x); y = Math.round(y);
+        if (x >= 0 && x < GRID_SIZE && y >= 0 && y < GRID_SIZE) grid[y][x] = colorCode;
+    }
+
     // ==========================================
     // MYTHIC LURE 1: THE MYCELIAL HOOK
     // ==========================================
@@ -125,6 +131,144 @@ export function generateMythicLure(options = {}) {
                 setPixel(sx, sy, rng.chance(0.5) ? cGlow : cGlowHigh);
             }
         }
+    }
+
+// ==========================================
+    // MYTHIC LURE 2: THE PRISMATIC GEODE HOOK
+    // ==========================================
+    else if (lureId === 'prismatic_geode_hook') {
+        const cx = 32;
+        let cy = 16;
+        
+        const cLine = '#E2E8F0';     // White silk
+        const cKnot = '#94A3B8';     // Polished steel
+        const cGeode = '#334155';    // Basalt gray
+        const cGeodeShad = '#0F172A';// Deep basalt shadow
+        const cGeodeDark = '#020617';// Void shadow
+
+        // Spectral Prism Palettes
+        const cBlue = '#4F46E5';
+        const cPurple = '#9333EA';
+        const cPink = '#EC4899';
+        const cCyan = '#22D3EE';
+        const cWhite = '#FFFFFF';
+
+        // 1. The Strong Silk Line
+        for (let y = 0; y < 12; y++) setPixel(cx, y, cLine);
+
+        // 2. Polished Steel Connector Ring
+        for (let y = 12; y <= 16; y++) {
+            for (let x = -2; x <= 2; x++) {
+                if (Math.abs(x) + Math.abs(y - 14) === 2) {
+                    setPixel(cx + x, y, x > 0 ? cKnot : '#FFFFFF');
+                }
+            }
+        }
+
+        // 3. Cracked Geode Body (The Weight)
+        const gy = 24;
+        const gw = 7;
+        for (let y = -6; y <= 6; y++) {
+            const w = gw - Math.floor(Math.abs(y) * 0.5);
+            for (let x = -w; x <= w; x++) {
+                let c = cGeode;
+                if (x > w - 2 || y > 4) c = cGeodeShad;
+                if (x < -w + 2 && y < -4) c = cGeode;
+                
+                // Draw a distinct diagonal crack down the center
+                const crackCenter = Math.round(y * 0.5);
+                if (Math.abs(x - crackCenter) <= 2) {
+                    c = cGeodeDark; // Deep interior void
+                }
+                setPixel(cx + x, gy + y, c);
+            }
+        }
+        
+        // Draw sharp crystal clusters growing inside the geode crack
+        for (let dy = -2; dy <= 2; dy++) {
+            forcePixel(cx + Math.round(dy * 0.5) - 1, gy + dy, cCyan);
+            forcePixel(cx + Math.round(dy * 0.5) + 1, gy + dy, cPink);
+        }
+        forcePixel(cx - 1, gy, cWhite);
+        forcePixel(cx + 1, gy + 1, cWhite);
+
+        // 4. Obsidian Shank
+        const shankEnd = 45;
+        for (let y = 31; y <= shankEnd; y++) {
+            setPixel(cx, y, cGeodeShad);
+            setPixel(cx + 1, y, cGeodeDark);
+            setPixel(cx - 1, y, cGeode); // Highlight edge
+        }
+
+        // 5. The Prismatic Crystal Hook (Pixel-Perfect Curve & Gradient)
+        const drawHookSegment = (hx, hy, cColor, cHigh, cShad) => {
+            forcePixel(hx, hy, cColor);
+            forcePixel(hx - 1, hy, cHigh);
+            forcePixel(hx + 1, hy, cShad);
+        };
+
+        // Smoothly map the curve coordinates to prevent loose pixels
+        const curvePoints = [
+            { x: 32, y: 46 }, { x: 32, y: 47 }, { x: 31, y: 48 }, { x: 30, y: 49 },
+            { x: 29, y: 50 }, { x: 28, y: 51 }, { x: 26, y: 52 }, { x: 24, y: 52 },
+            { x: 22, y: 51 }, { x: 21, y: 50 }, { x: 20, y: 48 }, { x: 20, y: 46 },
+            { x: 19, y: 44 }, { x: 19, y: 42 }, { x: 18, y: 40 }, { x: 18, y: 38 }
+        ];
+        
+        curvePoints.forEach((pt, i) => {
+            const pct = i / (curvePoints.length - 1);
+            let c = cBlue;
+            let h = cWhite;
+            let s = cGeodeDark;
+            
+            // Clean spectral transition
+            if (pct < 0.25) {
+                c = cBlue;
+                h = cCyan;
+            } else if (pct < 0.6) {
+                c = cPurple;
+                h = cPink;
+            } else if (pct < 0.85) {
+                c = cPink;
+                h = cWhite;
+            } else {
+                c = cCyan;
+                h = cWhite;
+            }
+            
+            drawHookSegment(pt.x, pt.y, c, h, s);
+            
+            // Build the crystal barb extending from the curve
+            if (i === 11) {
+                drawHookSegment(pt.x + 1, pt.y - 1, cPink, cWhite, cGeodeDark);
+                drawHookSegment(pt.x + 2, pt.y - 2, cCyan, cWhite, cGeodeDark);
+            }
+        });
+
+        // 6. Prismatic Star Flares
+        const drawStarFlare = (fx, fy, color) => {
+            setPixel(fx, fy, cWhite); // Sparkle core
+            setPixel(fx - 1, fy, color);
+            setPixel(fx + 1, fy, color);
+            setPixel(fx, fy - 1, color);
+            setPixel(fx, fy + 1, color);
+            
+            // Soft shadow edge to make it pop
+            setPixel(fx - 1, fy - 1, cGeodeDark);
+            setPixel(fx + 1, fy - 1, cGeodeDark);
+            setPixel(fx - 1, fy + 1, cGeodeDark);
+            setPixel(fx + 1, fy + 1, cGeodeDark);
+        };
+        
+        // Structured positioning to frame the hook
+        const flares = [
+            { x: cx - 14, y: gy - 3,  c: cCyan },
+            { x: cx + 12, y: gy + 4,  c: cPink },
+            { x: cx - 12, y: gy + 15, c: cPurple },
+            { x: cx + 10, y: gy + 22, c: cCyan },
+            { x: cx - 8,  y: gy - 12, c: cPink }
+        ];
+        flares.forEach(f => drawStarFlare(f.x, f.y, f.c));
     }
 
     // ==========================================

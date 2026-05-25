@@ -17,6 +17,7 @@ import { BIOMES } from '../exploration/biomes.js';
 import { PlayerEngine } from '../data/player_data.js';
 import { TooltipUI } from './tooltip_ui.js';
 import { generateLurePart } from '../art/lure_generator.js';
+import { generatePotion } from '../art/potion_generator.js'; // <-- ADD THIS IMPORT
 import { HUD } from './hud_ui.js'; // <-- ADD THIS IMPORT
 import { generatePoiArt } from '../art/poi_generator.js'; // <-- ADD THIS
 import { generateMythicLure } from '../art/mythic_lure_generator.js'; // <-- ADD THIS TOO for the reward function
@@ -129,8 +130,14 @@ export const HubUI = {
         this.currentNode = node;
         const player = state.player;
         
-        // --- NEW: Ensure old saves initialize endgameProgress seamlessly ---
-        if (!player.endgameProgress) player.endgameProgress = { fungal: { totalCompostKg: 0, currentGoalIdx: 0 } };
+        // --- FIX: Safely initialize ALL endgame progress objects ---
+        if (!player.endgameProgress) player.endgameProgress = {};
+        if (!player.endgameProgress.fungal) player.endgameProgress.fungal = { totalCompostKg: 0, currentGoalIdx: 0 };
+        
+        // Ensure crystal exists, and gracefully wipe old array formats to avoid crashes
+        if (!player.endgameProgress.crystal || Array.isArray(player.endgameProgress.crystal.filledSlots)) {
+            player.endgameProgress.crystal = { filledSlots: {}, curatorRating: 0, currentGoalIdx: 0 };
+        }
         
         if (!player.activeQuests) player.activeQuests = [];
 
@@ -140,7 +147,6 @@ export const HubUI = {
         const townSeed = state.world.seed + node.x + node.y;
         const rng = createRng(townSeed);
         
-        // --- FIX: Check if it's a POI or a Settlement ---
         let art;
         if (node.poi) {
             art = generatePoiArt({ poiId: node.poi, rng });
@@ -152,12 +158,14 @@ export const HubUI = {
         document.getElementById('hub-biome').innerText = node.poi ? "Endgame Sanctuary" : BIOMES[node.biomeId].name;
         document.getElementById('hub-img').src = art.imageDataUrl;
 
-        // Populate NPCs depending on whether we are at a POI or a Settlement
+        // Populate NPCs
         if (node.poi === 'myconid_colony') {
-            this.currentNPCs = {
-                elders: generateNPCData({ seed: rng.next() * 10000, biomeId: 'fungal', race: 'Myconid', archetype: 'Spore Tender' })
-            };
+            this.currentNPCs = { elders: generateNPCData({ seed: rng.next() * 10000, biomeId: 'fungal', race: 'Myconid', archetype: 'Spore Tender' }) };
             this.activeTab = 'compost';
+        } else if (node.poi === 'crystal_museum') {
+            // --- NEW: Crystal Museum NPC ---
+            this.currentNPCs = { curator: generateNPCData({ seed: rng.next() * 10000, biomeId: 'crystal', race: 'Elf', gender: 'Male', archetype: 'Cave Scholar' }) };
+            this.activeTab = 'exhibition';
         } else {
             this.currentNPCs = {
                 market: generateNPCData({ seed: rng.next() * 10000, biomeId: node.biomeId }),
@@ -183,6 +191,8 @@ export const HubUI = {
             
             if (node.poi === 'myconid_colony') {
                 btn.style.display = ['compost', 'elders'].includes(tab) ? 'block' : 'none';
+            } else if (node.poi === 'crystal_museum') {
+                btn.style.display = ['exhibition', 'curator'].includes(tab) ? 'block' : 'none'; // <-- NEW
             } else {
                 btn.style.display = ['market', 'fishmonger', 'boatwright', 'tavern', 'safehouse'].includes(tab) ? 'block' : 'none';
             }
@@ -202,7 +212,7 @@ export const HubUI = {
     },
 
     triggerTabDialogue() {
-        // NEW: Intercept the Safehouse tab so it doesn't look for an NPC!
+        // Intercept the Safehouse tab so it doesn't look for an NPC!
         if (this.activeTab === 'safehouse') {
             const player = this.gameState.player;
             document.getElementById('hub-dialogue-portrait').src = player.identity.portraitData;
@@ -227,10 +237,12 @@ export const HubUI = {
             return; // Exit early so it doesn't run the normal NPC logic!
         }
 
-        // --- FIX: Safely route the compost tab to the elders NPC ---
-        const npcKey = this.activeTab === 'compost' ? 'elders' : this.activeTab;
-        const npc = this.currentNPCs[npcKey];
+        // --- FIX: Safely route special POI tabs to their specific NPCs ---
+        let npcKey = this.activeTab;
+        if (this.activeTab === 'compost') npcKey = 'elders';
+        if (this.activeTab === 'exhibition') npcKey = 'curator'; // Routes exhibition tab to Zephyr
         
+        const npc = this.currentNPCs[npcKey];
         if (!npc) return; // Safety fallback
 
         let msg = "";
@@ -254,6 +266,33 @@ export const HubUI = {
                 msg = "The Vesper-Bloom stirs below. Feed the pile until it overflows, and the ancient hook shall be yours.";
             } else {
                 msg = "The pile is complete. The Leviathan awaits your line. Our pact is fulfilled.";
+            }
+            } else if (this.activeTab === 'curator' || this.activeTab === 'exhibition') {
+            // --- FIX: Progressive Dialogue with Absolute Completion Tracking ---
+            const player = this.gameState.player;
+            const progress = player.endgameProgress?.crystal;
+            const progressLevel = progress ? progress.currentGoalIdx : 0;
+            const filledCount = progress ? Object.keys(progress.filledSlots).length : 0;
+            
+            const isMuseumComplete = filledCount === 40;
+            const isRatingMaxed = progress ? progress.curatorRating >= 10000 : false;
+
+            if (isMuseumComplete) {
+                // The ultimate reward line, locked strictly behind 40/40 tanks filled
+                msg = "The archive is absolutely complete. A flawless masterpiece of preservation, every single tank illuminated. You have immortalized the ecology of the Darklake, angler.";
+            } else if (isRatingMaxed) {
+                // Milestone reached, but empty tanks still remain
+                msg = "You have unlocked my final relic, angler! The Geode Monarch stirs below. Yet, there are still empty tanks remaining if you seek true academic perfection.";
+            } else {
+                if (progressLevel === 0) {
+                    msg = "Welcome to the Eternal Archive. Our collection is woefully incomplete. Bring me pristine specimens, and I shall reward you handsomely.";
+                } else if (progressLevel === 1) {
+                    msg = "Excellent progress. The geode tanks are beginning to shine with life. But we need rarer catches still.";
+                } else if (progressLevel === 2) {
+                    msg = "Fascinating! The archive is expanding beautifully. Continue your hunt, angler.";
+                } else if (progressLevel === 3) {
+                    msg = "We are so close to the final milestone. Only a few more elite exhibits remain before our funding cap is met.";
+                }
             }
         } else {
             const roleName = this.activeTab === 'market' ? 'Merchant' : this.activeTab.charAt(0).toUpperCase() + this.activeTab.slice(1);
@@ -299,8 +338,10 @@ export const HubUI = {
         else if (this.activeTab === 'boatwright') this.renderBoatwright(content);
         else if (this.activeTab === 'tavern') this.renderTavern(content);
         else if (this.activeTab === 'safehouse') this.renderSafehouse(content); 
-        else if (this.activeTab === 'compost') this.renderCompost(content); // <-- NEW
-        else if (this.activeTab === 'elders') this.renderElders(content);   // <-- NEW
+        else if (this.activeTab === 'compost') this.renderCompost(content); 
+        else if (this.activeTab === 'elders') this.renderElders(content);   
+        else if (this.activeTab === 'exhibition') this.renderExhibition(content); // <-- NEW
+        else if (this.activeTab === 'curator') this.renderCurator(content);       // <-- NEW
     },
 
     // --- MARKET: BUY & SELL TOGGLE ---
@@ -708,17 +749,34 @@ export const HubUI = {
                     player.vitals.gold -= item.price;
                     if (item.stock !== 99) item.stock--;
                     
-                    if (item.type === 'upgrade') {
-                        player.inventory.push({ ...item, invType: 'upgrade' });
+                    // --- FIX: Force standard type and invType properties upon purchase ---
+                    if (item.type === 'upgrade' || (item.id && item.id.startsWith('upg_'))) {
+                        player.inventory.push({ ...item, type: 'upgrade', invType: 'upgrade' });
                     } else if (item.type === 'boat') {
-                        const oldUpgrades = player.gear.boat.upgrades;
-                        const newBoat = item.itemData;
-                        newBoat.invType = 'boat'; 
+                        // Transfer active upgrades from your old boat to your brand new hull
                         newBoat.upgrades = oldUpgrades; 
                         
                         const oldBoatCopy = JSON.parse(JSON.stringify(player.gear.boat));
-                        oldBoatCopy.upgrades = { lantern: { id: 'lantern_basic', name: 'Basic Lantern', lightRadius: 100, fuelDrainRate: 1.0 }, plating: null, engine: null, prow: null, storage: null };
-                        player.inventory.push(oldBoatCopy);
+                        // Strip upgrades from the old boat copy since they were transferred
+                        oldBoatCopy.upgrades = { 
+                            lantern: { id: 'upg_lantern_basic', name: 'Basic Lantern', slot: 'lantern', type: 'upgrade', basePrice: 0, desc: 'Faint candlelight. Light radius 100px.', lightRadius: 100, fuelDrainRate: 1.0 }, 
+                            plating: null, engine: null, prow: null, storage: null 
+                        };
+
+                        const coords = `${this.gameState.globalX},${this.gameState.globalY}`;
+                        const safehouse = player.safehouses[coords];
+
+                        // --- FIX: Store Old Vessel or Process Trade-In ---
+                        if (safehouse && safehouse.hangar.length < safehouse.hangarCapacity) {
+                            // Safehouse is owned in this harbor and has empty space
+                            safehouse.hangar.push(oldBoatCopy);
+                            HUD.logAction(`Your old vessel "${oldBoatCopy.identity.name}" was transferred to your Dry Dock.`, "safe");
+                        } else {
+                            // No safehouse or Hangar is full: Boatwright processes a Trade-In rebate
+                            const sellValue = Math.max(1, Math.round(oldBoatCopy.economy.value * effStats.economy.sellMultiplier));
+                            player.vitals.gold += sellValue;
+                            HUD.logAction(`Traded in "${oldBoatCopy.identity.name}" for a scrap rebate of +${sellValue}g.`, "safe");
+                        }
 
                         player.gear.boat = newBoat;
                         player.vitals.hp = Math.min(player.vitals.hp, newBoat.stats.maxHp); 
@@ -1181,8 +1239,15 @@ export const HubUI = {
         });
 
         const upgradeList = document.getElementById('sh-upgrade-list');
-        // Check for both 'type' (Shop) and 'invType' (Inventory) to be totally safe
-        const allAvailableUpgrades =[...safehouse.stash.filter(i=>i.type==='upgrade' || i.invType==='upgrade'), ...player.inventory.filter(i=>i.type==='upgrade' || i.invType==='upgrade')];
+        
+        // --- FIX: Robust list filtering with ID-Prefix fallback and Null-safety ---
+        const stashList = Array.isArray(safehouse.stash) ? safehouse.stash : [];
+        const cargoList = Array.isArray(player.inventory) ? player.inventory : [];
+        
+        const allAvailableUpgrades = [
+            ...stashList.filter(i => i && (i.type === 'upgrade' || i.invType === 'upgrade' || (i.id && i.id.startsWith('upg_')))),
+            ...cargoList.filter(i => i && (i.type === 'upgrade' || i.invType === 'upgrade' || (i.id && i.id.startsWith('upg_'))))
+        ];
         
         if (allAvailableUpgrades.length === 0) {
             upgradeList.innerHTML = `<span style="color:var(--text-muted); font-style:italic;">No upgrades found in Stash or Cargo.</span>`;
@@ -1284,15 +1349,24 @@ export const HubUI = {
         const renderItem = (item, isCargo, index) => {
             const slot = document.createElement('div');
             slot.className = 'inv-slot';
-            let imgSrc = item.imageDataUrl || (item.art ? item.art.imageDataUrl : '');
-            if (imgSrc) slot.innerHTML = `<img src="${imgSrc}" />`;
-            else slot.innerHTML = `<span style="font-size: 0.6rem; color: #555;">${item.name.substring(0,6)}</span>`;
+            
+            // --- FIX: Robust Image Extraction (Boats use profileDataUrl, others use imageDataUrl) ---
+            let imgSrc = item.imageDataUrl || (item.art ? (item.art.profileDataUrl || item.art.imageDataUrl) : '');
+            
+            // --- FIX: Robust Name Extraction (Boats use identity.name, others use name) ---
+            const safeName = item.name || (item.identity ? item.identity.name : 'Unknown');
+
+            if (imgSrc) {
+                slot.innerHTML = `<img src="${imgSrc}" />`;
+            } else {
+                slot.innerHTML = `<span style="font-size: 0.6rem; color: #555; text-align: center;">${safeName.substring(0, 6)}</span>`;
+            }
 
             // --- NEW UNIFIED TOOLTIP BINDER ---
             TooltipUI.bind(slot, item, player);
 
             slot.onclick = () => {
-                TooltipUI.hide(); // <-- UPDATED
+                TooltipUI.hide(); 
                 if (isCargo) {
                     if (item.invType === 'fish' || item.invType === 'boat' || item.invType === 'chest') {
                         SFX.playError(); return; 
@@ -1900,22 +1974,367 @@ export const HubUI = {
         } else if (tier === 2) {
             player.vitals.gold += 6000;
             for(let i=0; i<2; i++) {
-                // To keep it simple, we grant a massive Crafting buff via the standard Potion generation
+                // --- FIX: Generate a proper Potion Sprite ---
+                const pSeed = Date.now() + i;
+                // 'insight' effectType forces the generator to use the green gemstone palette
+                const pArt = generatePotion({ rng: createRng(pSeed), seed: pSeed, effectType: 'insight' }); 
+                
                 player.inventory.push({
                     id: `potion_${rng.int(10000,99999)}`, invType: 'potion', name: 'Elixir of the Spore Lord',
                     buff: { stat: 'crafting', statName: 'Crafting', amount: 4, durationMins: 1440, maxDurationMins: 1440 },
-                    // Placeholder art until we make custom potion art
-                    imageDataUrl: generateLurePart({ visualId: 'jelly_bell', rng: createRng(Date.now()+i) }) 
+                    imageDataUrl: pArt.imageDataUrl 
                 });
             }
         } else if (tier === 3) {
             player.vitals.gold += 12000;
             // The Mycelial Hook (Mythic Lure)
             player.inventory.push({
-                id: `lure_mycelial_hook`, invType: 'lure', name: 'The Mycelial Hook',
+                id: `lure_mycelial_hook`, 
+                invType: 'lure', 
+                name: 'The Mycelial Hook',
                 stats: { color: -60, sound: -80, light: 90, weight: -40 },
-                durability: -1, maxDurability: -1, componentsUsed: 5, basePrice: 0, // <-- FIX: Use -1 instead of Infinity
+                durability: -1, 
+                maxDurability: -1, 
+                componentsUsed: 5, 
+                basePrice: 0,
+                // --- FIX: Add Seed and Components for structural consistency ---
+                seed: rng.int(10000, 99999),
+                components: ['lead_sinker', 'phosphor_cap', 'jelly_bell'], 
                 imageDataUrl: generateMythicLure({ lureId: 'mycelial_hook', rng }).imageDataUrl 
+            });
+        }
+    },
+
+    // ==========================================
+    // CRYSTAL MUSEUM (ENDGAME POI)
+    // ==========================================
+
+    renderCurator(container) {
+        container.innerHTML = `
+            <div style="display:flex; justify-content:space-between; align-items:baseline; border-bottom: 2px solid #38BDF8; padding-bottom: 0.5rem; margin-bottom: 1rem;">
+                <h2 style="margin:0; color:#38BDF8; font-size: 1.8rem;">Curator Zephyr</h2>
+            </div>
+            <p style="color:var(--text-main); font-size: 1.2rem; line-height:1.5;">Zephyr oversees the Eternal Archive, a network of suspended geode tanks preserving the delicate ecosystems of the Darklake. He requires highly specific, living specimens to complete his research. Fulfill his exhibition requests, and he will grant you access to his private alchemical reserves and ancient tackle.</p>
+            <p style="color:var(--text-muted); font-size: 1.1rem; line-height:1.5;"><i>"A common minnow is worth little to history. But a massive, legendary deep-sea horror? That is a specimen that commands respect... and high Curator Ratings."</i></p>
+        `;
+    },
+
+    renderExhibition(container) {
+        const player = this.gameState.player;
+        const progress = player.endgameProgress.crystal;
+        const slots = this.gameState.world.museumSlots; 
+        
+        const MILESTONES = [
+            { pts: 1000,  reward: "Curator's Purse (2,500g & 5x Glow Bulbs)" },
+            { pts: 3000,  reward: "Luminescent Oil Cache (+40 Light Potion)" },
+            { pts: 6000,  reward: "Exotic Tackle Box (6,000g & Silk/Bells)" },
+            { pts: 10000, reward: "The Prismatic Geode Hook (Mythic Lure)" }
+        ];
+
+        const filledCount = Object.keys(progress.filledSlots).length;
+        const isMuseumComplete = filledCount === 40;
+        const isRatingMaxed = progress.curatorRating >= 10000;
+
+        let targetIdx = progress.currentGoalIdx;
+        let isMaxed = targetIdx >= MILESTONES.length;
+        let targetPts = isMaxed ? 10000 : MILESTONES[targetIdx].pts;
+        
+        // --- FIX: Dynamic state descriptions separating Points from Slots ---
+        let rewardDesc = isMaxed ? "Rating Maxed! Geode Hook Unlocked." : MILESTONES[targetIdx].reward;
+
+        if (isMuseumComplete) {
+            rewardDesc = "✨ Flawless Museum Completion Achieved! ✨";
+        } else if (isRatingMaxed) {
+            rewardDesc = `Rating Maxed! Hook Unlocked. (Tanks Remaining: ${40 - filledCount})`;
+        }
+
+        let pct = Math.min(100, (progress.curatorRating / targetPts) * 100);
+
+        // --- 1. COMPACT DASHBOARD HEADER ---
+        let html = `
+            <div style="display:flex; flex-direction:column; height:100%; min-height:0;">
+                
+                <div style="flex-shrink: 0; display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 2px solid #38BDF8; padding-bottom: 0.3rem;">
+                        <h2 style="margin: 0; color: #38BDF8; font-size: 1.6rem; line-height: 1;">The Eternal Archive</h2>
+                        <div style="font-size: 1.1rem; color: var(--text-muted);">Rating: <b style="color:var(--cyan-glow);">${progress.curatorRating}</b> / ${targetPts}</div>
+                    </div>
+                    
+                    <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(15, 23, 42, 0.5); border: 1px solid var(--panel-border); padding: 0.5rem 1rem; border-radius: 4px;">
+                        <div style="flex: 1; margin-right: 1rem;">
+                            <div style="width:100%; height:8px; background:#000; border-radius:4px; overflow:hidden;">
+                                <div style="height:100%; width:${pct}%; background:#38BDF8; transition: width 0.4s;"></div>
+                            </div>
+                        </div>
+                        <div style="font-size: 0.95rem; color: var(--text-muted); white-space: nowrap;">
+                            Next Milestone: <span style="color:var(--gold-warn); font-weight:bold;">${rewardDesc}</span>
+                        </div>
+                    </div>
+                </div>
+        `;
+
+        // --- 2. GRID VIEW ---
+        if (this.selectedMuseumSlot === undefined || this.selectedMuseumSlot === null) {
+            const filledCount = Object.keys(progress.filledSlots).length;
+            html += `<h3 style="flex-shrink: 0; margin:0 0 0.5rem 0; color:#38BDF8; font-size: 1.3rem;">Exhibition Tanks (${filledCount} / 40)</h3>`;
+            
+            html += `<div style="flex: 1; min-height: 0; overflow-y: auto; padding-right: 0.5rem; display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 0.6rem; align-content: flex-start;" id="museum-grid"></div>`;
+            
+            html += `</div>`; 
+            container.innerHTML = html;
+
+            const grid = document.getElementById('museum-grid');
+            
+            // Dynamic Keyframes for the Highlight Pulse
+            if (!document.getElementById('anim-pulse')) {
+                const style = document.createElement('style');
+                style.id = 'anim-pulse';
+                style.innerHTML = `@keyframes tankPulse { 0% { box-shadow: 0 0 5px rgba(34, 211, 238, 0.3); border-color: rgba(34,211,238,0.5); } 50% { box-shadow: 0 0 15px rgba(34, 211, 238, 0.8); border-color: rgba(34,211,238,1); } 100% { box-shadow: 0 0 5px rgba(34, 211, 238, 0.3); border-color: rgba(34,211,238,0.5); } }`;
+                document.head.appendChild(style);
+            }
+
+            slots.forEach(slot => {
+                const donatedFish = progress.filledSlots[slot.id];
+                const isFilled = !!donatedFish;
+                let canFill = false;
+
+                // Smart Highlighting Check
+                if (!isFilled) {
+                    canFill = player.inventory.some(item => {
+                        if (item.invType !== 'fish') return false;
+                        const r = slot.reqs;
+                        if (r.family && item.identity.family !== r.family) return false;
+                        if (r.sizeTier && item.physical.sizeTier !== r.sizeTier) return false;
+                        if (r.rarity && item.identity.rarity !== r.rarity) return false;
+                        return true;
+                    });
+                }
+
+                const el = document.createElement('div');
+                
+                if (isFilled) {
+                    el.style.cssText = "border: 2px solid #38BDF8; border-radius: 6px; display: flex; align-items: center; justify-content: center; height: 75px; background: rgba(2, 132, 199, 0.2); cursor: pointer; box-shadow: inset 0 0 15px rgba(56, 189, 248, 0.4); position: relative; overflow: hidden;";
+                    el.innerHTML = `
+                        <img src="${donatedFish.art.imageDataUrl}" style="width: 80%; height: 80%; object-fit: contain; image-rendering: pixelated; position: relative; z-index: 2;" />
+                        <div style="position: absolute; inset: 0; background: linear-gradient(135deg, rgba(255,255,255,0.3) 0%, rgba(255,255,255,0) 40%, rgba(255,255,255,0) 60%, rgba(56,189,248,0.3) 100%); z-index: 3; pointer-events: none;"></div>
+                    `;
+                } else {
+                    const rColor = getRarityColor(slot.reqs.rarity || 'Common');
+                    const rarText = slot.reqs.rarity ? `<span style="color:${rColor}; font-size: 0.75rem; text-shadow: 1px 1px 1px #000;">${slot.reqs.rarity}</span>` : `<span style="color:var(--text-muted); font-size: 0.75rem;">Any Rarity</span>`;
+                    const famText = slot.reqs.family ? `<b style="color:var(--text-main); font-size: 0.9rem; display:block; margin: 2px 0; text-shadow: 1px 1px 1px #000;">${slot.reqs.family.toUpperCase()}</b>` : `<b style="color:var(--text-main); font-size: 0.9rem; display:block; margin: 2px 0; text-shadow: 1px 1px 1px #000;">ANY FISH</b>`;
+                    const sizeText = slot.reqs.sizeTier ? `<span style="color:var(--muted); font-size: 0.75rem; text-shadow: 1px 1px 1px #000;">${slot.reqs.sizeTier}</span>` : `<span style="color:var(--muted); font-size: 0.75rem;">Any Size</span>`;
+
+                    // --- FIX: Strong Visual Indication for Can-Fill Slots ---
+                    if (canFill) {
+                        el.style.cssText = "border: 2px solid #22D3EE; border-radius: 6px; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 75px; background: rgba(34, 211, 238, 0.2); cursor: pointer; padding: 0.3rem; animation: tankPulse 1.5s infinite; position: relative;";
+                        el.innerHTML = `
+                            ${rarText}${famText}${sizeText}
+                            <div style="position:absolute; top:-6px; right:-6px; background:#22D3EE; color:#000; font-weight:bold; border-radius:50%; width:20px; height:20px; font-size:0.85rem; display:flex; align-items:center; justify-content:center; box-shadow:0 0 8px #22D3EE; z-index: 10;">!</div>
+                        `;
+                    } else {
+                        el.style.cssText = "border: 1px dashed var(--muted); border-radius: 6px; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 75px; background: rgba(0, 0, 0, 0.3); cursor: pointer; padding: 0.3rem; transition: background 0.15s;";
+                        el.innerHTML = `${rarText}${famText}${sizeText}`;
+                    }
+
+                    el.onmouseenter = () => { el.style.background = canFill ? 'rgba(34, 211, 238, 0.3)' : 'rgba(56, 189, 248, 0.2)'; };
+                    el.onmouseleave = () => { el.style.background = canFill ? 'rgba(34, 211, 238, 0.2)' : 'rgba(0, 0, 0, 0.3)'; };
+                }
+
+                el.onclick = () => {
+                    SFX.playUISelect();
+                    this.selectedMuseumSlot = slot.id;
+                    this.renderExhibition(container);
+                };
+                grid.appendChild(el);
+            });
+        } 
+        // --- 3. DETAILED DONATION VIEW ---
+        else {
+            const slot = slots[this.selectedMuseumSlot];
+            const donatedFish = progress.filledSlots[slot.id];
+            const isFilled = !!donatedFish;
+
+            html += `
+                <div style="flex-shrink: 0; display:flex; justify-content:space-between; align-items:center; margin-bottom: 1rem;">
+                    <h3 style="margin:0; color:#38BDF8; font-size: 1.4rem;">Tank Requirements: ${slot.title}</h3>
+                    <button class="menu-btn" id="btn-museum-back" style="width:auto; padding: 0.3rem 0.8rem; margin:0; font-size:1rem;">Back to Grid</button>
+                </div>
+            `;
+
+            if (isFilled) {
+                // --- FIX: Left Panel (The Containment Tank with absolute safety margins) ---
+                const leftTank = `
+                    <div style="flex: 1.3; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: var(--bg-void); border: 2px solid #38BDF8; border-radius: 6px; position: relative; overflow: hidden; box-shadow: inset 0 0 40px rgba(56, 189, 248, 0.15); padding: 1rem; box-sizing: border-box;">
+                        <img src="${donatedFish.art.imageDataUrl}" style="max-height: 140px; max-width: 100%; object-fit: contain; flex-shrink: 0; image-rendering: pixelated; position: relative; z-index: 2; padding: 10px; box-sizing: border-box;" />
+                        <div style="position: absolute; inset: 0; background: linear-gradient(135deg, rgba(255,255,255,0.15) 0%, rgba(255,255,255,0) 30%, rgba(255,255,255,0) 70%, rgba(56,189,248,0.2) 100%); z-index: 3; pointer-events: none;"></div>
+                        
+                        <div style="color:var(--cyan-glow); font-size:1.6rem; font-weight:bold; margin-top: 0.5rem; position: relative; z-index: 2; text-align: center; text-shadow: 1px 1px 2px #000; text-transform: capitalize;">${donatedFish.identity.name}</div>
+                        <div style="color:var(--text-muted); font-size:1rem; text-transform: uppercase; margin-top: 0.2rem; position: relative; z-index: 2; text-align: center; text-shadow: 1px 1px 1px #000;">[${donatedFish.physical.sizeTier} ${donatedFish.identity.rarity}]</div>
+                    </div>
+                `;
+
+                // --- NEW: Right Panel (The Detailed Archival Plaque) ---
+                const rarityColors = { 'Common': '#94A3B8', 'Uncommon': '#22C55E', 'Rare': '#3B82F6', 'Legendary': '#F59E0B', 'Boss': '#EF4444' };
+                const rColor = rarityColors[donatedFish.identity.rarity] || 'var(--text-main)';
+
+                const rightPlaque = `
+                    <div style="flex: 1; display: flex; flex-direction: column; gap: 0.5rem; background: rgba(15, 23, 42, 0.95); border: 1px solid var(--panel-border); border-radius: 6px; padding: 1rem; box-sizing: border-box; overflow-y: auto;">
+                        <h4 style="margin: 0; color: #38BDF8; font-size: 1.1rem; border-bottom: 1px solid var(--panel-border); padding-bottom: 0.4rem; letter-spacing: 0.05em; text-align: center;">ARCHIVAL SPECIMEN REPORT</h4>
+                        
+                        <div style="display:flex; justify-content:space-between; font-size: 0.95rem;">
+                            <span style="color:var(--text-muted);">Species Family:</span> 
+                            <span style="font-weight:bold; text-transform:capitalize; color: var(--text-main);">${donatedFish.identity.family}</span>
+                        </div>
+                        <div style="display:flex; justify-content:space-between; font-size: 0.95rem;">
+                            <span style="color:var(--text-muted);">Specimen Rarity:</span> 
+                            <span style="font-weight:bold; color:${rColor}">${donatedFish.identity.rarity}</span>
+                        </div>
+                        <div style="display:flex; justify-content:space-between; font-size: 0.95rem;">
+                            <span style="color:var(--text-muted);">Exhibition Weight:</span> 
+                            <span style="font-weight:bold; color:var(--gold-warn);">${donatedFish.actualWeight} kg</span>
+                        </div>
+                        
+                        <div style="display:flex; justify-content:space-between; font-size: 0.95rem; border-top: 1px dashed var(--panel-border); padding-top: 0.4rem; margin-top: 0.2rem;">
+                            <span style="color:var(--text-muted);">Stamina Metric:</span> 
+                            <span style="font-weight:bold; color: var(--text-main);">${donatedFish.combat.stamina} HP</span>
+                        </div>
+                        <div style="display:flex; justify-content:space-between; font-size: 0.95rem;">
+                            <span style="color:var(--text-muted);">Speed Coefficient:</span> 
+                            <span style="font-weight:bold; color: var(--text-main);">${donatedFish.combat.speed}</span>
+                        </div>
+                        <div style="display:flex; justify-content:space-between; font-size: 0.95rem;">
+                            <span style="color:var(--text-muted);">Optimal Drag Spot:</span> 
+                            <span style="font-weight:bold; color:var(--cyan-glow);">${donatedFish.combat.optimalReel}% Power</span>
+                        </div>
+                        
+                        <div style="display:flex; justify-content:space-between; font-size: 0.95rem; border-top: 1px dashed var(--panel-border); padding-top: 0.4rem; margin-top: 0.2rem;">
+                            <span style="color:var(--text-muted);">Native Strata:</span> 
+                            <span style="font-weight:bold; color: var(--text-main);">${donatedFish.environment.depthPref}</span>
+                        </div>
+                        <div style="display:flex; justify-content:space-between; font-size: 0.95rem;">
+                            <span style="color:var(--text-muted);">Active Period:</span> 
+                            <span style="font-weight:bold; color: var(--text-main);">${donatedFish.environment.activeHours}</span>
+                        </div>
+                        
+                        <div style="margin-top: auto; color: var(--green-safe); font-weight: bold; text-align: center; font-size: 0.9rem; letter-spacing: 0.05em; border-top: 1px solid var(--panel-border); padding-top: 0.5rem; text-shadow: 0 0 5px rgba(34, 197, 94, 0.2);">
+                            ✓ CHRONO-PRESERVED
+                        </div>
+                    </div>
+                `;
+
+                html += `
+                    <div style="flex: 1; min-height: 0; display: flex; gap: 1.5rem; align-items: stretch; width: 100%;">
+                        ${leftTank}
+                        ${rightPlaque}
+                    </div>
+                `;
+                
+                html += `</div>`; // Close Flex Wrapper
+                container.innerHTML = html;
+                document.getElementById('btn-museum-back').onclick = () => { SFX.playUISelect(); this.selectedMuseumSlot = null; this.renderExhibition(container); };
+            } else {
+                html += `<div id="museum-fish-list" style="flex: 1; min-height: 0; display:flex; flex-direction:column; gap:0.5rem; overflow-y:auto; padding-right:0.5rem;"></div>`;
+                html += `</div>`; 
+                container.innerHTML = html;
+                
+                document.getElementById('btn-museum-back').onclick = () => { SFX.playUISelect(); this.selectedMuseumSlot = null; this.renderExhibition(container); };
+
+                const list = document.getElementById('museum-fish-list');
+                
+                const matches = player.inventory.filter(item => {
+                    if (item.invType !== 'fish') return false;
+                    const r = slot.reqs;
+                    if (r.family && item.identity.family !== r.family) return false;
+                    if (r.sizeTier && item.physical.sizeTier !== r.sizeTier) return false;
+                    if (r.rarity && item.identity.rarity !== r.rarity) return false;
+                    return true;
+                });
+
+                if (matches.length === 0) {
+                    list.innerHTML = `<div style="display:flex; height:100%; align-items:center; justify-content:center;"><p style="color:var(--text-muted); font-size:1.2rem; text-align:center;">You have no fish in your cargo that meet these requirements.</p></div>`;
+                } else {
+                    matches.forEach(item => {
+                        const row = document.createElement('div');
+                        row.className = 'shop-item-row';
+                        const realIndex = player.inventory.indexOf(item);
+                        
+                        const rarityScores = {'Common': 50, 'Uncommon': 120, 'Rare': 300, 'Legendary': 800, 'Boss': 2000};
+                        const sizeMults = {'Tiny': 0.8, 'Small': 1.0, 'Medium': 1.3, 'Large': 1.8, 'Massive': 2.5};
+                        const score = Math.round((rarityScores[item.identity.rarity] || 50) * (sizeMults[item.physical.sizeTier] || 1.0));
+
+                        row.innerHTML = `
+                            <div style="display:flex; gap: 1rem; align-items:center;">
+                                <img src="${item.art.imageDataUrl}" style="width:48px; height:48px; background:#000; border:1px solid var(--panel-border); border-radius:4px; image-rendering:pixelated; object-fit:contain;" />
+                                <div class="shop-item-info">
+                                    <b style="color: ${getItemColor(item)}; font-size:1.1rem;">${item.identity.name}</b> <span style="font-size:0.85rem; color:var(--text-muted); text-transform:uppercase;">[${item.physical.sizeTier}]</span>
+                                    <p style="color:var(--cyan-glow); font-weight:bold; margin-top:0.3rem;">Yields +${score} Curator Rating</p>
+                                </div>
+                            </div>
+                            <button class="menu-btn btn-donate" style="width: auto; padding: 0.5rem 1.5rem; margin:0; font-size:1.2rem; border-color:#38BDF8; color:#38BDF8;">Donate</button>
+                        `;
+
+                        TooltipUI.bind(row, item, player);
+
+                        row.querySelector('.btn-donate').onclick = () => {
+                            SFX.playSplash();
+                            TooltipUI.hide();
+                            
+                            progress.curatorRating += score;
+                            progress.filledSlots[slot.id] = item; 
+                            player.inventory.splice(realIndex, 1);
+                            
+                            if (!isMaxed && progress.curatorRating >= targetPts) {
+                                SFX.playLevelUp();
+                                this._grantMuseumReward(progress.currentGoalIdx, player);
+                                progress.currentGoalIdx++;
+                                HUD.logAction(`Museum Milestone Reached!`, "safe");
+                                this.triggerTabDialogue(); 
+                            }
+                            
+                            this.selectedMuseumSlot = null; 
+                            if (this.callbacks.onSave) this.callbacks.onSave();
+                            this.renderActiveTab();
+                        };
+                        list.appendChild(row);
+                    });
+                }
+            }
+        }
+    },
+
+    _grantMuseumReward(tier, player) {
+        const rng = createRng(Date.now());
+        if (tier === 0) {
+            player.vitals.gold += 2500;
+            for(let i=0; i<5; i++) player.reagents.push({ id: `part_${rng.int(10000,99999)}`, invType: 'part', name: 'Glow Bulb', visualId: 'glow_bulb', rarity: 'Uncommon', stats: { color: 0, sound: 0, light: 30, weight: 0 }, imageDataUrl: generateLurePart({ visualId: 'glow_bulb', rng: createRng(Date.now()+i) }) });
+        } else if (tier === 1) {
+            // Luminescent Oil (Custom Potion)
+            for(let i=0; i<5; i++) {
+                player.inventory.push({
+                    id: `potion_${rng.int(10000,99999)}`, invType: 'potion', name: 'Luminescent Oil',
+                    buff: { stat: 'fishing', statName: 'Fishing', amount: 3, durationMins: 1440, maxDurationMins: 1440 },
+                    imageDataUrl: generateLurePart({ visualId: 'glow_bulb', rng: createRng(Date.now()+i) }) 
+                });
+            }
+        } else if (tier === 2) {
+            player.vitals.gold += 6000;
+            for(let i=0; i<3; i++) player.reagents.push({ id: `part_${rng.int(10000,99999)}`, invType: 'part', name: 'Wraith Silk', visualId: 'wraith_silk', rarity: 'Rare', stats: { color: 0, sound: 0, light: 10, weight: -30 }, imageDataUrl: generateLurePart({ visualId: 'wraith_silk', rng: createRng(Date.now()+i) }) });
+            for(let i=0; i<3; i++) player.reagents.push({ id: `part_${rng.int(10000,99999)}`, invType: 'part', name: 'Jelly Bell', visualId: 'jelly_bell', rarity: 'Rare', stats: { color: 20, sound: 0, light: 20, weight: -20 }, imageDataUrl: generateLurePart({ visualId: 'jelly_bell', rng: createRng(Date.now()+i+3) }) });
+        } else if (tier === 3) {
+            // The Prismatic Geode Hook (Mythic Lure)
+            player.inventory.push({
+                id: `lure_prismatic_geode_hook`, 
+                invType: 'lure', 
+                name: 'The Prismatic Geode Hook',
+                stats: { color: 80, sound: -50, light: 95, weight: 70 },
+                durability: -1, 
+                maxDurability: -1, 
+                componentsUsed: 5, 
+                basePrice: 0,
+                // --- FIX: Add Seed and Components for structural consistency ---
+                seed: rng.int(10000, 99999),
+                components: ['lead_sinker', 'glow_bulb', 'spinner'], 
+                imageDataUrl: generateMythicLure({ lureId: 'prismatic_geode_hook', rng }).imageDataUrl 
             });
         }
     },
