@@ -160,6 +160,19 @@ export function generateGlobalMap(seed = Date.now(), discoveredNodes = []) {
         crystalPoiNode.name = "The Crystal Museum";
     }
 
+    // --- NEW: Place Volcanic Arena ---
+    let volcanicPoiNode = null;
+    if (deadEnds.volcanic.length > 0) {
+        volcanicPoiNode = rng.pick(deadEnds.volcanic);
+    } else {
+        const allVolcanic = nodes.flat().filter(n => n.biomeId === 'volcanic');
+        if (allVolcanic.length > 0) volcanicPoiNode = rng.pick(allVolcanic);
+    }
+    if (volcanicPoiNode) {
+        volcanicPoiNode.poi = 'volcanic_arena';
+        volcanicPoiNode.name = "The Aquatic Arena";
+    }
+
     // 6. SYSTEMATIC SETTLEMENT PLACEMENT (10 total, 2 per biome)
     const targets = { fungal: 2, crystal: 2, frozen: 2, volcanic: 2, abyssal: 2 };
     

@@ -274,6 +274,115 @@ export function generatePoiArt(options = {}) {
     }
 
     // ==========================================
+    // POI 3: THE VOLCANIC ARENA (Sulphur Springs)
+    // ==========================================
+    else if (poiId === 'volcanic_arena') {
+        const cBg = '#1C1917';        // Pitch dark ash
+        const cWall = '#450A0A';      // Deep magma red wall
+        const cWater = '#5e1313';     // Boiling blood-water
+        const cGleam = '#DC2626';     // Magma reflection
+        const cArenaBase = '#09090B'; // Pitch black obsidian
+        const cArenaTrim = '#27272A'; // Gray basalt
+        const cMagma = '#F59E0B';     // Hot orange magma
+        const cMagmaCore = '#FEF08A'; // White hot center
+        
+        glowExclusions.push(cMagma, cMagmaCore, cGleam);
+
+        // 1. Ash-choked background walls
+        for (let y = 0; y < horizonY; y++) {
+            for (let x = 0; x < GRID_W; x++) {
+                setBg(x, y, rng.chance((y - 10) / 40) ? cWall : cBg);
+            }
+        }
+
+        // 2. Boiling Magma Water
+        for (let y = horizonY; y < GRID_H; y++) {
+            for (let x = 0; x < GRID_W; x++) {
+                let c = cWater;
+                if (rng.chance(0.08 + (y - horizonY) * 0.02) && x % 3 === 0) c = cGleam;
+                // Add floating ash to water surface
+                if (rng.chance(0.02)) c = '#000000';
+                setBg(x, y, c);
+            }
+        }
+
+        // 3. Magma Falls in the background
+        for (let i = 0; i < 4; i++) {
+            const fx = rng.int(20, GRID_W - 20);
+            const fw = rng.int(4, 8);
+            for (let y = 20; y < horizonY + 5; y++) {
+                const splash = Math.sin(y * 0.5) * 2;
+                for (let x = -fw; x <= fw; x++) {
+                    if (x === 0 && rng.chance(0.8)) setBg(fx + x + splash, y, cMagmaCore);
+                    else if (Math.abs(x) < fw - 1) setBg(fx + x + splash, y, cMagma);
+                    else setBg(fx + x + splash, y, cGleam);
+                }
+            }
+            // Glow on the water below the fall
+            for (let x = -fw - 5; x <= fw + 5; x++) {
+                setBg(fx + x, horizonY + rng.int(0, 4), cGleam);
+            }
+        }
+
+        // 4. The Giant Obsidian Fighting Ring
+        const ringY = horizonY - 10;
+        const ringX = 140; // Shifted left to leave room for the boat
+        
+        // Massive suspended basalt platform
+        for (let y = ringY; y < GRID_H; y++) {
+            const w = 90; 
+            for (let x = -w; x <= w; x++) {
+                // Slope the sides of the arena slightly
+                if (y > ringY + 10 && Math.abs(x) > w - (y - (ringY + 10))) continue;
+                
+                let c = cArenaBase;
+                if (y === ringY || y === ringY + 1) c = cArenaTrim; // Ring floor edge
+                if (Math.abs(x) === w) c = cArenaTrim; // Ring side edge
+                
+                // Magma cracks running through the platform
+                if (x % 20 === 0 && y > ringY + 5 && rng.chance(0.6)) c = cMagma;
+                if (x % 20 === 1 && y > ringY + 5 && c === cMagma) c = cMagmaCore;
+
+                setMg(ringX + x, y, c);
+            }
+        }
+
+        // 5. Heavy Iron Chains suspending the arena
+        const drawChain = (startX, startY, endX, endY) => {
+            const dx = endX - startX;
+            const dy = endY - startY;
+            const dist = Math.hypot(dx, dy);
+            for(let j = 0; j <= dist; j++) {
+                const lx = Math.round(startX + (dx * (j/dist)));
+                const ly = Math.round(startY + (dy * (j/dist)));
+                if (j % 4 < 2) {
+                    setMg(lx, ly, '#3F3F46'); // Link
+                    setMg(lx + 1, ly, '#18181B');
+                } else {
+                    setMg(lx, ly, '#18181B'); // Gap
+                }
+            }
+        };
+        
+        drawChain(ringX - 80, ringY, 10, -10);
+        drawChain(ringX + 80, ringY, GRID_W - 40, -10);
+
+        // 6. The Iron Gladiator Cages on the ring
+        for (let cx = ringX - 50; cx <= ringX + 50; cx += 100) {
+            for (let y = ringY - 20; y <= ringY; y++) {
+                for (let x = -8; x <= 8; x++) {
+                    let c = null;
+                    if (y === ringY - 20 || y === ringY) c = cArenaTrim; // Top/bottom bars
+                    else if (x % 4 === 0) c = '#3F3F46'; // Vertical bars
+                    else if (y > ringY - 4) c = cArenaBase; // Shadow inside
+                    
+                    if (c) setMg(cx + x, y, c);
+                }
+            }
+        }
+    }
+
+    // ==========================================
     // OUTLINE PASS & FINAL RENDER
     // ==========================================
     const outlineGrid = Array(GRID_H).fill(null).map(() => Array(GRID_W).fill(null));

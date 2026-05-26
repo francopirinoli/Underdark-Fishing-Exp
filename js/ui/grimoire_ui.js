@@ -1749,12 +1749,36 @@ renderBestiary() {
                     </div>
                 `;
             } else if (activeSaga.id === 'volcanic') {
+                const prog = player.endgameProgress?.lava;
+                const currentTier = prog ? prog.currentTier : 1;
+                const hasHook = player.inventory.some(i => i.id === 'lure_brimstone_hook') || (player.gear.lure && player.gear.lure.id === 'lure_brimstone_hook');
+                
+                let instructions = "";
+                let targetTier = 10;
+                let pct = Math.min(100, ((currentTier - 1) / targetTier) * 100);
+
+                if (hasHook || currentTier > 10) {
+                    instructions = `
+                        <h4 style="color:#A855F7; margin:0 0 0.5rem 0; font-size:1.2rem;">THE SUMMONING</h4>
+                        <p style="margin:0; line-height:1.4;">You are the undisputed Champion of the Volcanic Arena. Ignis has relinquished <b>The Brimstone Hook</b>. Equip it and cast directly into the boiling caldera of the Aquatic Arena to summon the Ignis-Gorged Serpentine. Watch out for its active steam vents and blinding thermal overloads.</p>
+                    `;
+                } else {
+                    instructions = `
+                        <h4 style="color:var(--gold-warn); margin:0 0 0.5rem 0; font-size:1.2rem;">ACTIVE MILESTONE</h4>
+                        <p style="margin:0 0 1rem 0; line-height:1.4;">Form a squad of powerful fish from your Cargo Hold and defeat Gladiator-Master Ignis's champions in the <b>Aquatic Arena</b>.</p>
+                        <div style="display:flex; justify-content:space-between; font-size: 1.1rem; margin-bottom: 0.3rem;">
+                            <span>Arena Progression:</span>
+                            <span style="color:#EF4444; font-weight:bold;">Tier ${Math.min(10, currentTier)} / 10</span>
+                        </div>
+                        <div class="progress-bar" style="margin-bottom:0.5rem;"><div class="progress-fill" style="width: ${pct}%; background: #EF4444;"></div></div>
+                    `;
+                }
+
                 journalHtml = `
                     <h3 style="margin:0 0 1rem 0; color:#EF4444; font-size:1.8rem; border-bottom: 2px solid #EF4444; padding-bottom:0.5rem;">Saga of the Magma Ring</h3>
                     <p style="color:var(--text-main); font-size:1.15rem; line-height:1.5; font-style:italic; margin-bottom:1.5rem;">"The gladiators of the Sulphur Springs challenge any angler to pit their catch against theirs in the boiling arena. Winner of the ultimate tournament claims the unmelting magma hook..."</p>
                     <div class="dashboard-group" style="border-color:#EF4444; background:rgba(239, 68, 68, 0.05); padding:1.2rem;">
-                        <h4 style="color:var(--text-muted); margin:0 0 0.5rem 0; font-size:1.2rem;">LOCKED CHAPTER</h4>
-                        <p style="margin:0; line-height:1.4;">The Aquatic Arena gates are locked. Continue exploring the Sulphur Springs and prepare your strongest fish for automated battles.</p>
+                        ${instructions}
                     </div>
                 `;
             } else if (activeSaga.id === 'abyssal') {

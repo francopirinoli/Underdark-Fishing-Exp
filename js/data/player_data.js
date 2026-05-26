@@ -98,8 +98,9 @@ export const PlayerEngine = {
             // --- NEW: Endgame Progression Trackers ---
             endgameProgress: {
                 fungal: { totalCompostKg: 0, currentGoalIdx: 0 },
-                // --- FIX: Change filledSlots to an Object {} instead of an Array [] ---
-                crystal: { filledSlots: {}, curatorRating: 0, currentGoalIdx: 0 } 
+                crystal: { filledSlots: {}, curatorRating: 0, currentGoalIdx: 0 },
+                // --- NEW: Volcanic Arena Progress ---
+                lava: { currentTier: 1, endlessScore: 0, roster: [null, null, null] } // 0: Front, 1: Middle, 2: Back
             },
             gear: {
                 boat: starterBoat,

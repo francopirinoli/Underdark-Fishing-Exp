@@ -109,15 +109,16 @@ export const ExplorationRenderer = {
         };
 
         const isMyconid = globalNode && globalNode.poi === 'myconid_colony';
-        const isMuseum = globalNode && globalNode.poi === 'crystal_museum'; // <-- NEW
+        const isMuseum = globalNode && globalNode.poi === 'crystal_museum'; 
+        const isArena = globalNode && globalNode.poi === 'volcanic_arena'; // <-- NEW
 
         const colors = {
             [TILE.WATER]: hexToRgb(pal.water),[TILE.DEEP_WATER]: hexToRgb(pal.deepWater),
             [TILE.LAND]: hexToRgb(pal.land),
             [TILE.ROCK]: hexToRgb(pal.rock),
             [TILE.FLORA]: hexToRgb(pal.flora),
-            // --- FIX: Tint the dock cyan if it's the Museum ---
-            [TILE.DOCK]: isMyconid ? hexToRgb('#18181B') : (isMuseum ? hexToRgb('#0369A1') : [120, 53, 15]) 
+            // --- FIX: Add Obsidian Dock Color ---
+            [TILE.DOCK]: isMyconid ? hexToRgb('#18181B') : (isMuseum ? hexToRgb('#0369A1') : (isArena ? hexToRgb('#1C1917') : [120, 53, 15])) 
         };
 
         const imgData = offCtx.createImageData(this.offscreenMap.width, this.offscreenMap.height);
@@ -152,9 +153,12 @@ export const ExplorationRenderer = {
                             if (isMyconid) {
                                 if ((dx + dy) % 2 === 0) { finalR -= 10; finalG -= 10; finalB -= 10; }
                             } else if (isMuseum) {
-                                // Crisp, faceted crystal platform
                                 if (dx === 0 && dy === 0) { finalR += 20; finalG += 50; finalB += 80; }
                                 if ((dx + dy) % 3 === 0) { finalR -= 10; finalG -= 20; finalB -= 20; }
+                            } else if (isArena) {
+                                // Obsidian dock with magma cracks
+                                if (dx === 0 || dy === 0) { finalR += 80; finalG += 10; finalB += 10; } // Magma edge
+                                if (dx === 1 && dy === 1) { finalR += 120; finalG += 50; } // Heat glint
                             } else {
                                 if (dx === 0 || dy === 0) { finalR -= 20; finalG -= 10; finalB -= 5; } 
                                 if (dx === 1 && dy === 1) { finalR += 20; finalG += 10; } 
@@ -563,39 +567,51 @@ export const ExplorationRenderer = {
                 activeLights.push({ x: dx, y: dy, radius: 150 });
 
             } else if (this.currentNode && this.currentNode.poi === 'crystal_museum') {
-                // --- RESTORED: Crystal Museum Dock Render ---
+                // (Existing Crystal Museum Render Code...)
                 this.ctx.save();
                 this.ctx.translate(dx, dy);
-                
-                const time = Date.now() / 1000;
-                const glow = Math.sin(time * 2) * 0.2 + 0.8;
-
-                // Diamond Base
-                this.ctx.fillStyle = '#0284C7';
-                this.ctx.beginPath();
-                this.ctx.moveTo(0, -20); this.ctx.lineTo(20, 0); this.ctx.lineTo(0, 20); this.ctx.lineTo(-20, 0);
-                this.ctx.fill();
-
-                // Inner Bright Crystal
-                this.ctx.fillStyle = '#38BDF8';
-                this.ctx.beginPath();
-                this.ctx.moveTo(0, -12); this.ctx.lineTo(12, 0); this.ctx.lineTo(0, 12); this.ctx.lineTo(-12, 0);
-                this.ctx.fill();
-
-                // Center Core
-                this.ctx.fillStyle = `rgba(255, 255, 255, ${glow})`;
-                this.ctx.fillRect(-2, -2, 4, 4);
-                
-                this.ctx.restore();
-
-                // --- FIX: Draw Actual Colored Glow ---
+                // ...
                 const grad = this.ctx.createRadialGradient(dx, dy, 0, dx, dy, 180);
-                grad.addColorStop(0, 'rgba(56, 189, 248, 0.6)'); // Brilliant Cyan glare
+                grad.addColorStop(0, 'rgba(56, 189, 248, 0.6)'); 
                 grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
                 this.ctx.fillStyle = grad;
                 this.ctx.beginPath(); this.ctx.arc(dx, dy, 180, 0, Math.PI * 2); this.ctx.fill();
 
                 activeLights.push({ x: dx, y: dy, radius: 180 });
+
+            } else if (this.currentNode && this.currentNode.poi === 'volcanic_arena') {
+                // --- NEW: Volcanic Arena Dock Render (Scaled Down 30%) ---
+                this.ctx.save();
+                this.ctx.translate(dx, dy);
+                
+                // Dark Obsidian Platform
+                this.ctx.fillStyle = '#1C1917';
+                this.ctx.fillRect(-14, -14, 28, 28);
+                
+                // Glowing Magma Cracks
+                this.ctx.fillStyle = '#EF4444';
+                this.ctx.fillRect(-10, -10, 20, 2);
+                this.ctx.fillRect(-10, 8, 20, 2);
+                this.ctx.fillRect(-10, -10, 2, 20);
+                this.ctx.fillRect(8, -10, 2, 20);
+
+                // Four Corner Torches
+                this.ctx.fillStyle = '#F59E0B';
+                [[-12,-12], [9,-12], [-12,9], [9,9]].forEach(pos => {
+                    this.ctx.fillRect(pos[0], pos[1], 3, 3);
+                });
+
+                this.ctx.restore();
+
+                // Project Massive Heat Aura (Scaled down to match)
+                const grad = this.ctx.createRadialGradient(dx, dy, 0, dx, dy, 140);
+                grad.addColorStop(0, 'rgba(239, 68, 68, 0.5)'); // Magma Red
+                grad.addColorStop(0.5, 'rgba(245, 158, 11, 0.2)'); // Deep Orange
+                grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+                this.ctx.fillStyle = grad;
+                this.ctx.beginPath(); this.ctx.arc(dx, dy, 140, 0, Math.PI * 2); this.ctx.fill();
+
+                activeLights.push({ x: dx, y: dy, radius: 140 });
 
             } else {
                 // Standard wooden dock light

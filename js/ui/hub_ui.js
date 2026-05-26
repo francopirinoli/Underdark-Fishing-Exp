@@ -21,6 +21,10 @@ import { generatePotion } from '../art/potion_generator.js'; // <-- ADD THIS IMP
 import { HUD } from './hud_ui.js'; // <-- ADD THIS IMPORT
 import { generatePoiArt } from '../art/poi_generator.js'; // <-- ADD THIS
 import { generateMythicLure } from '../art/mythic_lure_generator.js'; // <-- ADD THIS TOO for the reward function
+// --- NEW ARENA IMPORTS ---
+import { ArenaCampaign } from '../fishing/arena_campaign.js';
+import { ArenaEngine } from '../fishing/arena_engine.js';
+import { ArenaRenderer } from '../fishing/arena_renderer.js';
 
 export const HubUI = {
     gameState: null,
@@ -44,6 +48,10 @@ export const HubUI = {
     safehouseSubTab: 'drydock',
     aquariumAnimFrame: null,
     aquariumEntities:[],
+    // --- NEW: Arena State ---
+    arenaEngine: null,
+    arenaSimFrame: null,
+    arenaLastTime: 0,
 
     init(callbacks) {
         this.callbacks = callbacks;
@@ -60,6 +68,12 @@ export const HubUI = {
         document.getElementById('btn-exit-safehouse').addEventListener('click', () => {
             SFX.playUISelect();
             this.closeSafehouse();
+        });
+
+        // --- Full Screen Arena Buttons ---
+        document.getElementById('btn-exit-arena').addEventListener('click', () => {
+            SFX.playUISelect();
+            this.closeArena();
         });
 
         document.querySelectorAll('.sh-main-tab').forEach(tab => {
@@ -90,6 +104,13 @@ export const HubUI = {
                         this.openSafehouse();
                         return; // Stop here, keep the Hub unchanged behind it
                     }
+                }
+
+                // Intercept Arena Click
+                if (targetTab === 'arena') {
+                    SFX.playUISelect();
+                    this.openArena();
+                    return; 
                 }
 
                 tabs.forEach(t => t.classList.remove('active'));
@@ -125,6 +146,27 @@ export const HubUI = {
         this.renderActiveTab(); 
     },
 
+    openArena() {
+        document.getElementById('z85-arena').style.display = 'flex';
+        // Reset view states
+        document.getElementById('arena-draft-view').style.display = 'flex';
+        document.getElementById('arena-combat-view').style.display = 'none';
+        this.renderArenaDrafting();
+    },
+
+    closeArena() {
+        document.getElementById('z85-arena').style.display = 'none';
+        if (this.arenaSimFrame) {
+            cancelAnimationFrame(this.arenaSimFrame);
+            this.arenaSimFrame = null;
+        }
+        if (this.arenaEngine) ArenaRenderer.stop();
+        this.arenaEngine = null;
+        
+        // Return active hub tab focus visually back to whatever it was behind the arena
+        this.renderActiveTab(); 
+    },
+
     open(state, node) {
         this.gameState = state;
         this.currentNode = node;
@@ -134,9 +176,13 @@ export const HubUI = {
         if (!player.endgameProgress) player.endgameProgress = {};
         if (!player.endgameProgress.fungal) player.endgameProgress.fungal = { totalCompostKg: 0, currentGoalIdx: 0 };
         
-        // Ensure crystal exists, and gracefully wipe old array formats to avoid crashes
         if (!player.endgameProgress.crystal || Array.isArray(player.endgameProgress.crystal.filledSlots)) {
             player.endgameProgress.crystal = { filledSlots: {}, curatorRating: 0, currentGoalIdx: 0 };
+        }
+        
+        // --- NEW: Safe initialization for older saves ---
+        if (!player.endgameProgress.lava) {
+            player.endgameProgress.lava = { currentTier: 1, endlessScore: 0, roster: [null, null, null] };
         }
         
         if (!player.activeQuests) player.activeQuests = [];
@@ -162,10 +208,13 @@ export const HubUI = {
         if (node.poi === 'myconid_colony') {
             this.currentNPCs = { elders: generateNPCData({ seed: rng.next() * 10000, biomeId: 'fungal', race: 'Myconid', archetype: 'Spore Tender' }) };
             this.activeTab = 'compost';
-        } else if (node.poi === 'crystal_museum') {
-            // --- NEW: Crystal Museum NPC ---
+}       else if (node.poi === 'crystal_museum') {
             this.currentNPCs = { curator: generateNPCData({ seed: rng.next() * 10000, biomeId: 'crystal', race: 'Elf', gender: 'Male', archetype: 'Cave Scholar' }) };
             this.activeTab = 'exhibition';
+        } else if (node.poi === 'volcanic_arena') {
+            this.currentNPCs = { master: generateNPCData({ seed: rng.next() * 10000, biomeId: 'volcanic', race: 'Orc', gender: 'Male', archetype: 'Mercenary' }) };
+            this.currentNPCs.master.name = "Gladiator-Master Ignis"; 
+            this.activeTab = 'master'; // <-- FIX: Set default tab to 'master', not 'arena'
         } else {
             this.currentNPCs = {
                 market: generateNPCData({ seed: rng.next() * 10000, biomeId: node.biomeId }),
@@ -192,7 +241,9 @@ export const HubUI = {
             if (node.poi === 'myconid_colony') {
                 btn.style.display = ['compost', 'elders'].includes(tab) ? 'block' : 'none';
             } else if (node.poi === 'crystal_museum') {
-                btn.style.display = ['exhibition', 'curator'].includes(tab) ? 'block' : 'none'; // <-- NEW
+                btn.style.display = ['exhibition', 'curator'].includes(tab) ? 'block' : 'none'; 
+            } else if (node.poi === 'volcanic_arena') {
+                btn.style.display = ['arena', 'master'].includes(tab) ? 'block' : 'none'; // <-- NEW
             } else {
                 btn.style.display = ['market', 'fishmonger', 'boatwright', 'tavern', 'safehouse'].includes(tab) ? 'block' : 'none';
             }
@@ -206,7 +257,15 @@ export const HubUI = {
 
     close() {
         document.getElementById('z75-hub').style.display = 'none';
-        this.stopAquariumLoop(); // <-- NEW
+        this.stopAquariumLoop(); 
+        
+        // --- NEW: Stop Arena Loop ---
+        if (this.arenaSimFrame) {
+            cancelAnimationFrame(this.arenaSimFrame);
+            this.arenaSimFrame = null;
+        }
+        if (this.arenaEngine) ArenaRenderer.stop();
+        
         this.gameState = null;
         if (this.callbacks.onDepart) this.callbacks.onDepart();
     },
@@ -240,10 +299,11 @@ export const HubUI = {
         // --- FIX: Safely route special POI tabs to their specific NPCs ---
         let npcKey = this.activeTab;
         if (this.activeTab === 'compost') npcKey = 'elders';
-        if (this.activeTab === 'exhibition') npcKey = 'curator'; // Routes exhibition tab to Zephyr
+        if (this.activeTab === 'exhibition') npcKey = 'curator'; 
+        if (this.activeTab === 'arena') npcKey = 'master'; // <-- NEW
         
         const npc = this.currentNPCs[npcKey];
-        if (!npc) return; // Safety fallback
+        if (!npc) return; 
 
         let msg = "";
         const rng = createRng(Date.now());
@@ -294,6 +354,18 @@ export const HubUI = {
                     msg = "We are so close to the final milestone. Only a few more elite exhibits remain before our funding cap is met.";
                 }
             }
+            } else if (this.activeTab === 'master' || this.activeTab === 'arena') {
+            // --- NEW: PROGRESSIVE ARENA DIALOGUE ---
+            const progressLevel = this.gameState.player.endgameProgress?.lava?.currentTier || 1;
+            
+            if (progressLevel <= 9) {
+                const tierData = ArenaCampaign.getTier(progressLevel);
+                msg = `Welcome to the boiling ring. Your next opponent is ${tierData.name}. ${tierData.dialogue}`;
+            } else if (progressLevel === 10) {
+                msg = "You have survived the gauntlet. Now face the heat of the core. Defeat my champions, and the Brimstone Hook is yours.";
+            } else {
+                msg = "You are the undisputed champion of the springs. But the arena never sleeps. Defend your title in Challenger's Deep.";
+            }
         } else {
             const roleName = this.activeTab === 'market' ? 'Merchant' : this.activeTab.charAt(0).toUpperCase() + this.activeTab.slice(1);
             msg = DialogueGenerator.getGreeting(npc, roleName, rng);
@@ -328,9 +400,17 @@ export const HubUI = {
         const content = document.getElementById('hub-content-area');
         content.innerHTML = ''; 
         
-        // Stop aquarium animation if we navigate away from it
         if (this.activeTab !== 'safehouse' || this.safehouseSubTab !== 'aquarium') {
             this.stopAquariumLoop();
+        }
+        
+        // Stop Arena Loop if navigating away
+        if (this.activeTab !== 'arena') {
+            if (this.arenaSimFrame) {
+                cancelAnimationFrame(this.arenaSimFrame);
+                this.arenaSimFrame = null;
+            }
+            if (this.arenaEngine) ArenaRenderer.stop();
         }
         
         if (this.activeTab === 'market') this.renderMarket(content);
@@ -340,8 +420,9 @@ export const HubUI = {
         else if (this.activeTab === 'safehouse') this.renderSafehouse(content); 
         else if (this.activeTab === 'compost') this.renderCompost(content); 
         else if (this.activeTab === 'elders') this.renderElders(content);   
-        else if (this.activeTab === 'exhibition') this.renderExhibition(content); // <-- NEW
-        else if (this.activeTab === 'curator') this.renderCurator(content);       // <-- NEW
+        else if (this.activeTab === 'exhibition') this.renderExhibition(content); 
+        else if (this.activeTab === 'curator') this.renderCurator(content);       
+        else if (this.activeTab === 'master') this.renderMaster(content); // <-- FIX: 'arena' call removed!
     },
 
     // --- MARKET: BUY & SELL TOGGLE ---
@@ -2338,4 +2419,404 @@ export const HubUI = {
             });
         }
     },
+// ==========================================
+    // THE VOLCANIC ARENA (ENDGAME POI)
+    // ==========================================
+
+    renderMaster(container) {
+        container.innerHTML = `
+            <div style="display:flex; justify-content:space-between; align-items:baseline; border-bottom: 2px solid #EF4444; padding-bottom: 0.5rem; margin-bottom: 1rem;">
+                <h2 style="margin:0; color:#EF4444; font-size: 1.8rem;">Gladiator-Master Ignis</h2>
+            </div>
+            <p style="color:var(--text-main); font-size: 1.2rem; line-height:1.5;">The Volcanic Arena pits the most aggressive and highly adapted denizens of the deep lakes against one another. Form a 3-fish squad from your Cargo Hold to compete in automated, tactical battles.</p>
+            <p style="color:var(--text-muted); font-size: 1.1rem; line-height:1.5;"><i>"Size is not everything. A tiny, evasive venom-spitter can humble a massive dreadnought. Understand the elements: <b>Predators</b> eat the <b>Slippery</b>, the <b>Slippery</b> evade the <b>Armored</b>, the <b>Armored</b> crush the <b>Amorphous</b>, and the <b>Amorphous</b> smother <b>Predators</b>."</i></p>
+        `;
+    },
+
+    renderArenaDrafting() {
+        const player = this.gameState.player;
+        const progress = player.endgameProgress.lava;
+        const currentTier = progress.currentTier;
+        
+        let opponentData;
+        let isEndless = false;
+        
+        if (currentTier <= 10) {
+            opponentData = ArenaCampaign.getTier(currentTier);
+            document.getElementById('arena-tier-title').innerText = `Tournament: Tier ${currentTier}/10`;
+        } else {
+            isEndless = true;
+            document.getElementById('arena-tier-title').innerText = `Challenger's Deep (Wins: ${progress.endlessScore})`;
+            
+            // Calculate average rating of top 3 fish in cargo to scale the enemy
+            let topFish = [...player.inventory].filter(f => f.invType === 'fish').sort((a,b) => b.economy.baseValue - a.economy.baseValue);
+            let avgValue = 100;
+            if (topFish.length >= 3) {
+                avgValue = (topFish[0].economy.baseValue + topFish[1].economy.baseValue + topFish[2].economy.baseValue) / 3;
+            }
+            opponentData = ArenaCampaign.generateEndlessTeam(avgValue, Date.now()); 
+        }
+
+        // Generate Opponent Portrait on the fly
+        const oppSeed = currentTier <= 10 ? 8888 + currentTier : Date.now();
+        const oppNpc = generateNPCData({ seed: oppSeed, race: opponentData.race, gender: opponentData.gender });
+
+        // --- FIX: Safely retrieve and assign an ID to the container so it survives re-renders ---
+        let oppContainer = document.getElementById('arena-opp-container');
+        if (!oppContainer) {
+            const nameEl = document.getElementById('arena-opp-name');
+            if (nameEl) {
+                oppContainer = nameEl.parentElement.parentElement;
+                oppContainer.id = 'arena-opp-container';
+            }
+        }
+        
+        if (oppContainer) {
+            oppContainer.style.display = 'flex';
+            oppContainer.style.gap = '1rem';
+            oppContainer.style.alignItems = 'center';
+            
+            const rewardText = `${opponentData.rewardGold}g` + (currentTier === 10 ? ` + The Brimstone Hook` : '');
+            
+            oppContainer.innerHTML = `
+                <img src="${oppNpc.imageDataUrl}" style="width: 80px; height: 80px; background: #000; border: 2px solid #EF4444; border-radius: 4px; image-rendering: pixelated; flex-shrink: 0;" />
+                <div style="flex: 1;">
+                    <h3 style="margin: 0 0 0.3rem 0; color: #EF4444; font-size: 1.4rem;">Opponent: <span style="color: var(--text-main);">${opponentData.name} - ${opponentData.title}</span></h3>
+                    <p style="margin: 0 0 0.5rem 0; color: var(--text-muted); font-style: italic; font-size: 1.1rem; line-height: 1.4;">"${opponentData.dialogue}"</p>
+                    <div style="font-weight: bold; color: var(--gold-warn); font-size: 1.3rem;">Reward: <span>${rewardText}</span></div>
+                </div>
+            `;
+        }
+
+        // Validate roster references to ensure fish weren't sold
+        progress.roster = progress.roster.map(id => {
+            if (!id) return null;
+            const stillExists = player.inventory.some(i => i.instanceId === id);
+            return stillExists ? id : null;
+        });
+
+        const playerTeam = progress.roster.map(id => player.inventory.find(i => i.instanceId === id) || null);
+        const slotsFilled = playerTeam.filter(f => f !== null).length;
+
+        // 1. Render Left Roster Slots
+        const rosterContainer = document.getElementById('arena-roster-slots');
+        rosterContainer.innerHTML = '';
+        const labels = ['Front (Tank)', 'Middle (Vanguard)', 'Back (Support)'];
+
+        playerTeam.forEach((f, i) => {
+            if (f) {
+                rosterContainer.innerHTML += `
+                    <div class="arena-draft-slot filled" id="roster-slot-${i}" style="flex:1; display:flex; align-items:center; gap:1rem; background:rgba(239,68,68,0.1); border:2px solid #EF4444; border-radius:6px; padding:0.8rem;">
+                        <img src="${f.art.imageDataUrl}" style="width:64px; height:64px; background:#000; border:1px solid #EF4444; border-radius:4px; image-rendering:pixelated; object-fit:contain;" />
+                        <div style="flex:1; overflow: hidden;">
+                            <b style="color: ${getItemColor(f)}; font-size:1.3rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block;">${f.identity.name}</b>
+                            <div style="color:var(--text-muted); font-size:0.9rem; text-transform:uppercase; margin-bottom:0.4rem;">${labels[i]} - ${f.physical.sizeTier} ${f.identity.family}</div>
+                            <div class="arena-draft-stats" style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+                                <span class="arena-badge">HP: ${Math.round(4 * f.combat.stamina * [0.6, 1.0, 1.5, 2.5, 4.0][['Tiny','Small','Medium','Large','Massive'].indexOf(f.physical.sizeTier)])}</span>
+                                <span class="arena-badge">ATK: ${Math.round(25 * [0.6, 1.0, 1.5, 2.5, 4.0][['Tiny','Small','Medium','Large','Massive'].indexOf(f.physical.sizeTier)] * (1.0 + f.combat.aggression))}</span>
+                                <span class="arena-badge">Class: ${['shark','deepsea'].includes(f.identity.family) ? 'Predator' : ['eel','cephalopod'].includes(f.identity.family) ? 'Slippery' : ['crustacean','ray'].includes(f.identity.family) ? 'Armored' : 'Amorphous'}</span>
+                            </div>
+                        </div>
+                        <button class="menu-btn btn-unassign" data-idx="${i}" style="width:auto; padding:0.5rem 1rem; margin:0; font-size:1.1rem; border-color:var(--red-danger); color:var(--red-danger);">Remove</button>
+                    </div>
+                `;
+            } else {
+                rosterContainer.innerHTML += `
+                    <div class="arena-draft-slot empty" style="flex:1; border:2px dashed var(--text-muted); background:rgba(0,0,0,0.3); border-radius:6px; padding:1.5rem; display:flex; flex-direction:column; justify-content:center; align-items:center; cursor:pointer;">
+                        <div style="font-size:1.2rem; font-weight:bold; color:var(--text-main);">${labels[i]}</div>
+                        <div style="color:var(--text-muted); margin-top:0.2rem;">Empty Slot</div>
+                    </div>
+                `;
+            }
+        });
+
+        // Attach Unassign Listeners
+        rosterContainer.querySelectorAll('.btn-unassign').forEach(btn => {
+            btn.onclick = (e) => {
+                SFX.playUISelect();
+                TooltipUI.hide();
+                const idx = parseInt(e.target.getAttribute('data-idx'));
+                progress.roster[idx] = null;
+                if (this.callbacks.onSave) this.callbacks.onSave();
+                this.renderArenaDrafting();
+            };
+        });
+
+        // 2. Render Right Cargo List
+        const list = document.getElementById('arena-draft-cargo');
+        list.innerHTML = '';
+        const availableFish = player.inventory.filter(i => i.invType === 'fish');
+        
+        if (availableFish.length === 0) {
+            list.innerHTML = `<div style="text-align:center; color:var(--text-muted); margin-top:2rem; font-size:1.2rem;">You have no fish in your cargo. Catch some first!</div>`;
+        }
+
+        availableFish.forEach(fish => {
+            const isAssigned = progress.roster.includes(fish.instanceId);
+            const row = document.createElement('div');
+            row.className = 'shop-item-row';
+            row.style.opacity = isAssigned ? '0.4' : '1.0';
+            row.style.background = 'var(--bg-void)';
+            row.style.padding = '0.8rem';
+            row.style.border = `1px solid ${isAssigned ? '#EF4444' : 'var(--panel-border)'}`;
+            
+            row.innerHTML = `
+                <div style="display:flex; gap: 1rem; align-items:center; flex:1; overflow:hidden;">
+                    <img src="${fish.art.imageDataUrl}" style="width:48px; height:48px; background:#000; border:1px solid var(--panel-border); border-radius:4px; image-rendering:pixelated; object-fit:contain; flex-shrink:0;" />
+                    <div style="flex:1; overflow:hidden;">
+                        <b style="color: ${getItemColor(fish)}; font-size:1.2rem; display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${fish.identity.name}</b> 
+                        <span style="font-size:0.85rem; color:var(--text-muted); text-transform:uppercase;">[${fish.physical.sizeTier} ${fish.identity.family}]</span>
+                        <div style="font-size:0.95rem; color:var(--text-main); margin-top:0.3rem;">Stamina: ${fish.combat.stamina} | Speed: ${fish.combat.speed} | Aggression: ${Math.round(fish.combat.aggression*100)}%</div>
+                    </div>
+                </div>
+                <button class="menu-btn btn-assign" style="width:auto; padding:0.5rem 1.2rem; margin:0; font-size:1.1rem; border-color:var(--cyan-glow); color:var(--cyan-glow);" ${isAssigned ? 'disabled' : ''}>${isAssigned ? 'Assigned' : 'Assign'}</button>
+            `;
+
+            TooltipUI.bind(row, fish, player);
+
+            if (!isAssigned) {
+                row.querySelector('.btn-assign').onclick = () => {
+                    SFX.playUISelect();
+                    TooltipUI.hide();
+                    const emptyIdx = progress.roster.indexOf(null);
+                    if (emptyIdx !== -1) {
+                        progress.roster[emptyIdx] = fish.instanceId;
+                        if (this.callbacks.onSave) this.callbacks.onSave();
+                        this.renderArenaDrafting();
+                    } else {
+                        SFX.playError();
+                        HUD.logAction("Arena squad is already full!", "danger");
+                    }
+                };
+            }
+            list.appendChild(row);
+        });
+
+        // 3. Start Battle Button
+        const btnStart = document.getElementById('btn-arena-start-fight');
+        if (slotsFilled < 3) {
+            btnStart.disabled = true;
+            btnStart.innerText = `Assign ${3 - slotsFilled} more fish to enter`;
+            btnStart.style.borderColor = 'var(--panel-border)';
+            btnStart.style.color = 'var(--text-muted)';
+            btnStart.onclick = null;
+        } else {
+            btnStart.disabled = false;
+            btnStart.innerText = `Enter The Ring`;
+            btnStart.style.borderColor = 'var(--green-safe)';
+            btnStart.style.color = 'var(--green-safe)';
+            
+            btnStart.onclick = () => {
+                SFX.playUISelect();
+                TooltipUI.hide();
+                const enemyTeam = opponentData.generateTeam();
+                const isBoss = currentTier === 10;
+                this.startArenaBattle(playerTeam, enemyTeam, opponentData.rewardGold, isBoss);
+            };
+        }
+    },
+
+    startArenaBattle(playerTeam, enemyTeam, rewardGold, isBoss) {
+        document.getElementById('arena-draft-view').style.display = 'none';
+        document.getElementById('arena-combat-view').style.display = 'flex';
+        
+        const canvas = document.getElementById('arena-main-canvas');
+        canvas.width = 640; 
+        canvas.height = 360;
+        
+        ArenaRenderer.init(canvas);
+        ArenaRenderer.width = canvas.width;
+        ArenaRenderer.height = canvas.height;
+        
+        const logBox = document.getElementById('arena-main-log');
+        logBox.innerHTML = '';
+        
+        const statusHeader = document.getElementById('arena-combat-status');
+        statusHeader.innerText = 'FIGHTING';
+        statusHeader.style.color = 'var(--cyan-glow)';
+        
+        const btnLeave = document.getElementById('btn-arena-leave-fight');
+        btnLeave.style.display = 'none';
+
+        // Pre-build Stat Boxes
+        const pStats = document.getElementById('arena-combat-player-stats');
+        const eStats = document.getElementById('arena-combat-enemy-stats');
+        pStats.innerHTML = ''; eStats.innerHTML = '';
+
+        const createStatBox = (fish, team, idx) => {
+            if (!fish) return `<div class="arena-stat-box empty"></div>`;
+            return `
+                <div class="arena-stat-box" id="astat-${team}-${idx}">
+                    <div class="arena-stat-header">
+                        <img src="${fish.art.imageDataUrl}" />
+                        <div class="arena-stat-header-info">
+                            <b style="color:${getItemColor(fish)}">${fish.identity.name}</b>
+                            <span>${fish.physical.sizeTier} ${fish.identity.family}</span>
+                        </div>
+                    </div>
+                    <div class="arena-stat-bars">
+                        <div style="display:flex; justify-content:space-between; font-size:0.85rem; color:var(--text-muted);">
+                            <span>HP: <span id="ahp-val-${team}-${idx}">--</span></span>
+                            <span>ATK: <span id="aatk-val-${team}-${idx}">--</span></span>
+                        </div>
+                        <div class="arena-hp-bg">
+                            <div class="arena-hp-fill" id="ahp-fill-${team}-${idx}"></div>
+                            <div class="arena-shield-fill" id="ashield-fill-${team}-${idx}" style="width:0%;"></div>
+                        </div>
+                        <div class="arena-cd-bg"><div class="arena-cd-fill" id="acd-fill-${team}-${idx}"></div></div>
+                    </div>
+                    <div class="arena-status-icons" id="astatus-${team}-${idx}"></div>
+                </div>
+            `;
+        };
+
+        for(let i=0; i<3; i++) {
+            pStats.innerHTML += createStatBox(playerTeam[i], 'player', i);
+            eStats.innerHTML += createStatBox(enemyTeam[i], 'enemy', i);
+        }
+
+        const logMsg = (msg, color) => {
+            logBox.innerHTML += `<div style="color:${color}; margin-bottom:2px;">${msg}</div>`;
+            logBox.scrollTop = logBox.scrollHeight;
+        };
+
+        // Attach Image Data to objects to ensure Renderer works
+        playerTeam.forEach(f => f.imageDataUrl = f.art.imageDataUrl);
+        enemyTeam.forEach(f => f.imageDataUrl = f.art.imageDataUrl);
+
+        this.arenaEngine = new ArenaEngine(playerTeam, enemyTeam, (e) => {
+            ArenaRenderer.handleEvent(e);
+            
+            const timeStr = `[${e.time.toFixed(1)}s]`;
+            if (e.type === 'DAMAGE') {
+                const color = (e.isSuperEffective || e.isCrit) ? '#FBBF24' : '#E2E8F0';
+                const srcName = e.source ? e.source.name : 'Unknown';
+                
+                let critText = e.isCrit ? ' critically' : '';
+                let effectText = e.isSuperEffective ? ' (Super Effective!)' : '';
+                
+                logMsg(`${timeStr} 🗡️ ${srcName}${critText} hits ${e.target.name} for ${e.amount} damage.${effectText}`, color);
+            } else if (e.type === 'SHIELD_BLOCK') {
+                const srcName = e.source ? e.source.name : 'Unknown';
+                logMsg(`${timeStr} 🛡️ ${e.target.name}'s shield absorbs ${e.blocked} damage from ${srcName}.`, '#38BDF8');
+            } else if (e.type === 'ABILITY') {
+                logMsg(`${timeStr} ✨ ${e.attacker.name} uses [${e.ability}]!`, '#A855F7');
+            } else if (e.type === 'DEATH') {
+                logMsg(`${timeStr} 💀 ${e.target.name} was defeated!`, '#EF4444');
+            } else if (e.type === 'BATTLE_END') {
+                if (e.winner === 'PLAYER') {
+                    logMsg(`🏁 VICTORY! Earned ${rewardGold}g!`, '#22C55E');
+                    if (isBoss) logMsg(`🎁 Acquired The Brimstone Hook!`, '#A855F7');
+                    statusHeader.innerText = 'VICTORY';
+                    statusHeader.style.color = '#22C55E';
+                    this.handleArenaWin(rewardGold, isBoss);
+                } else if (e.winner === 'ENEMY') {
+                    logMsg(`🏁 DEFEAT. Your squad was wiped out.`, '#EF4444');
+                    statusHeader.innerText = 'DEFEAT';
+                    statusHeader.style.color = '#EF4444';
+                } else {
+                    logMsg(`🏁 TIMEOUT. Battle is a draw.`, '#94A3B8');
+                    statusHeader.innerText = 'DRAW';
+                    statusHeader.style.color = '#94A3B8';
+                }
+                btnLeave.style.display = 'block';
+            }
+        });
+
+        ArenaRenderer.loadFighters(this.arenaEngine.playerTeam, this.arenaEngine.enemyTeam);
+        ArenaRenderer.start();
+        this.arenaEngine.start();
+        
+        this.arenaLastTime = performance.now();
+        const loop = (t) => {
+            if (!this.arenaEngine || this.arenaEngine.state !== 'FIGHTING') return;
+            const speedEl = document.getElementById('arena-sim-speed');
+            const speedMult = parseFloat(speedEl ? speedEl.value : 1);
+            const dt = Math.min((t - this.arenaLastTime) / 1000, 0.1) * speedMult;
+            this.arenaLastTime = t;
+            
+            this.arenaEngine.tick(dt); 
+            this.syncArenaUiToEngine();
+            
+            this.arenaSimFrame = requestAnimationFrame(loop);
+        };
+        this.arenaSimFrame = requestAnimationFrame(loop);
+
+        btnLeave.onclick = () => {
+            SFX.playUISelect();
+            this.closeArena();
+            this.openArena(); // Re-open to go back to drafting mode
+        };
+    },
+
+    syncArenaUiToEngine() {
+        if (!this.arenaEngine) return;
+        
+        const updateFighterUI = (fighter) => {
+            if (!fighter) return;
+            const prefix = `${fighter.team}-${fighter.position}`;
+            const box = document.getElementById(`astat-${prefix}`);
+            if (!box) return;
+
+            document.getElementById(`ahp-val-${prefix}`).innerText = `${Math.ceil(fighter.hp)}/${fighter.maxHp}`;
+            document.getElementById(`aatk-val-${prefix}`).innerText = fighter.atk;
+
+            const hpPct = Math.max(0, (fighter.hp / fighter.maxHp) * 100);
+            document.getElementById(`ahp-fill-${prefix}`).style.width = `${hpPct}%`;
+            
+            const shieldPct = Math.min(100, (fighter.shield / fighter.maxHp) * 100);
+            document.getElementById(`ashield-fill-${prefix}`).style.width = `${shieldPct}%`;
+            
+            const cdPct = Math.max(0, (1 - (fighter.cd / fighter.maxCd)) * 100);
+            document.getElementById(`acd-fill-${prefix}`).style.width = `${cdPct}%`;
+
+            if (fighter.isDead) {
+                box.classList.add('dead');
+                document.getElementById(`ahp-fill-${prefix}`).style.width = `0%`;
+                document.getElementById(`ashield-fill-${prefix}`).style.width = `0%`;
+            }
+
+            const statusBox = document.getElementById(`astatus-${prefix}`);
+            let statusHtml = '';
+            if (fighter.shield > 0) statusHtml += '<div class="arena-status-icon arena-status-shield" title="Shielded"></div>';
+            if (fighter.stunTimer > 0) statusHtml += '<div class="arena-status-icon arena-status-stun" title="Stunned"></div>';
+            if (fighter.blindStacks > 0) statusHtml += '<div class="arena-status-icon arena-status-blind" title="Blinded"></div>';
+            fighter.poisonStacks.forEach(() => { statusHtml += '<div class="arena-status-icon arena-status-poison"></div>'; });
+            statusBox.innerHTML = statusHtml;
+        };
+
+        this.arenaEngine.playerTeam.forEach(updateFighterUI);
+        this.arenaEngine.enemyTeam.forEach(updateFighterUI);
+    },
+
+    handleArenaWin(rewardGold, isBoss) {
+        const player = this.gameState.player;
+        const progress = player.endgameProgress.lava;
+        
+        player.vitals.gold += rewardGold;
+        SFX.playCatchSuccess();
+        
+        if (isBoss) {
+            const rng = createRng(Date.now());
+            player.inventory.push({
+                id: `lure_brimstone_hook`, 
+                invType: 'lure', 
+                name: 'The Brimstone Hook',
+                stats: { color: 95, sound: 80, light: 70, weight: 90 },
+                durability: -1, maxDurability: -1, componentsUsed: 5, basePrice: 0,
+                seed: rng.int(10000, 99999), components: ['iron_sinker', 'rattler_bells', 'chilifish_oil'], 
+                imageDataUrl: generateMythicLure({ lureId: 'brimstone_hook', rng }).imageDataUrl 
+            });
+            HUD.logAction(`Arena Conquered! Earned ${rewardGold}g and The Brimstone Hook!`, "safe");
+            progress.currentTier++; 
+        } else if (progress.currentTier <= 10) {
+            HUD.logAction(`Arena Victory! Earned ${rewardGold}g.`, "safe");
+            progress.currentTier++;
+        } else {
+            HUD.logAction(`Challenger Defeated! Earned ${rewardGold}g.`, "safe");
+            progress.endlessScore++;
+        }
+        
+        if (this.callbacks.onSave) this.callbacks.onSave();
+    }
 };

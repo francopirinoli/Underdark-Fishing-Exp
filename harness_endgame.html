@@ -75,10 +75,15 @@
                 <div class="grid-2col">
                     <div class="dashboard-group">
                         <h3>POI Background Previews</h3>
-                        <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem;">
-                            <button class="btn" id="btn-art-fungal" style="flex:1;">Myconid Colony</button>
-                            <button class="btn" id="btn-art-crystal" style="flex:1;">Crystal Museum</button>
-                            <button class="btn" id="btn-art-frozen" style="flex:1;">Anglers Club</button>
+                        <div style="display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1rem;">
+                            <div style="display: flex; gap: 0.5rem;">
+                                <button class="btn" id="btn-art-fungal" style="flex:1;">Myconid Colony</button>
+                                <button class="btn" id="btn-art-crystal" style="flex:1;">Crystal Museum</button>
+                            </div>
+                            <div style="display: flex; gap: 0.5rem;">
+                                <button class="btn" id="btn-art-frozen" style="flex:1;">Anglers Club</button>
+                                <button class="btn" id="btn-art-lava" style="flex:1; border-color: #EF4444; color: #EF4444;">Volcanic Arena</button>
+                            </div>
                         </div>
                         <img id="preview-poi" src="" style="width: 100%; border: 1px solid var(--border); border-radius: 4px; background: #000; image-rendering: pixelated; min-height: 120px;" alt="POI Preview">
                     </div>
@@ -89,10 +94,16 @@
                             <button class="btn" id="btn-art-boss" style="flex:1;">Vesper-Bloom (Ph 1)</button>
                             <button class="btn" id="btn-art-lure" style="flex:1;">Mycelial Hook</button>
                         </div>
-                        <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem;">
+                        <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
                             <button class="btn" id="btn-art-boss-crystal" style="flex:1; border-color: #38BDF8; color: #38BDF8;">Geode Monarch (Ph 1)</button>
                             <button class="btn" id="btn-art-lure-crystal" style="flex:1; border-color: #38BDF8; color: #38BDF8;">Prismatic Geode Hook</button>
                         </div>
+                        <!-- NEW VOLCANIC PREVIEW BUTTONS -->
+                        <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem;">
+                            <button class="btn" id="btn-art-boss-lava" style="flex:1; border-color: #EF4444; color: #EF4444;">Ignis Serpentine (Ph 1)</button>
+                            <button class="btn" id="btn-art-lure-lava" style="flex:1; border-color: #EF4444; color: #EF4444;">Brimstone Hook</button>
+                        </div>
+                        
                         <div style="text-align: center;">
                             <img id="preview-boss" src="" style="width: 192px; height: 192px; border: 1px solid var(--border); border-radius: 4px; background: #000; image-rendering: pixelated; display: none;" alt="Boss Preview">
                         </div>
@@ -289,6 +300,7 @@
         document.getElementById('btn-art-fungal').onclick = () => renderPoiMock('fungal');
         document.getElementById('btn-art-crystal').onclick = () => renderPoiMock('crystal');
         document.getElementById('btn-art-frozen').onclick = () => renderPoiMock('frozen');
+        document.getElementById('btn-art-lava').onclick = () => renderPoiMock('lava'); // <-- NEW
 
         function renderPoiMock(biomeId) {
             if(AudioEngine.isInitialized) SFX.playUIHover();
@@ -297,6 +309,8 @@
                 art = generatePoiArt({ poiId: 'myconid_colony', rng: createRng(Date.now()) });
             } else if (biomeId === 'crystal') {
                 art = generatePoiArt({ poiId: 'crystal_museum', rng: createRng(Date.now()) });
+            } else if (biomeId === 'lava') { // <-- NEW
+                art = generatePoiArt({ poiId: 'volcanic_arena', rng: createRng(Date.now()) });
             } else {
                 art = generateSettlementArt({ biomeId: biomeId });
             }
@@ -342,6 +356,30 @@
             if(AudioEngine.isInitialized) SFX.playUIHover();
             const rng = createRng(Date.now());
             const art = generateMythicLure({ lureId: 'prismatic_geode_hook', rng });
+            const img = document.getElementById('preview-boss'); 
+            img.src = art.imageDataUrl;
+            img.style.display = 'inline-block';
+        };
+
+        // --- NEW: VOLCANIC ART PREVIEWS ---
+        let previewPhaseLava = 1;
+        document.getElementById('btn-art-boss-lava').onclick = () => {
+            if(AudioEngine.isInitialized) SFX.playUIHover();
+            const rng = createRng(Date.now());
+            const art = generateBossArt({ bossId: 'ignis_gorged_serpentine', rng, phase: previewPhaseLava });
+            const img = document.getElementById('preview-boss');
+            img.src = art.imageDataUrl;
+            img.style.display = 'inline-block';
+            document.getElementById('btn-art-boss-lava').innerText = `Ignis Serpentine (Ph ${previewPhaseLava})`;
+            
+            previewPhaseLava++;
+            if (previewPhaseLava > 3) previewPhaseLava = 1;
+        };
+
+        document.getElementById('btn-art-lure-lava').onclick = () => {
+            if(AudioEngine.isInitialized) SFX.playUIHover();
+            const rng = createRng(Date.now());
+            const art = generateMythicLure({ lureId: 'brimstone_hook', rng });
             const img = document.getElementById('preview-boss'); 
             img.src = art.imageDataUrl;
             img.style.display = 'inline-block';
@@ -438,6 +476,11 @@
             
             FishingEngine.startCast(effStats, testPlayer.stats.stamina, [bossData], 50, 480);
             
+            // --- NEW: HARNESS BOSS CALLBACK ---
+            FishingEngine.onBossStrike = (amount, reason) => {
+                logCombat(`[BOSS STRIKE] ${reason} dealt ${amount} hull damage!`);
+            };
+            
             FishingEngine.phase = 'BITE';
             FishingEngine.fishData = bossData;
             FishingEngine.hookTimerMs = 5000;
@@ -459,7 +502,11 @@
         
         document.getElementById('btn-fight-crystal').onclick = () => startBossFight(createMockBoss('boss_crystal', 'Geode Monarch', 300, 65, 550));
         document.getElementById('btn-fight-frozen').onclick = () => startBossFight(createMockBoss('boss_frozen', 'Glacial Leviathan', 360, 50, 2000));
-        document.getElementById('btn-fight-lava').onclick = () => startBossFight(createMockBoss('boss_lava', 'Ignis-Gorged Serpentine', 350, 45, 2200));
+        document.getElementById('btn-fight-lava').onclick = () => {
+            const bossData = generateFishData({ bossId: 'ignis_gorged_serpentine', seed: Date.now() });
+            const bossInstance = generateFishInstance(bossData, createRng(Date.now()));
+            startBossFight(bossInstance);
+        };
         document.getElementById('btn-fight-void').onclick = () => startBossFight(createMockBoss('boss_void', 'Void-Bound Aboleth', 380, 55, 2800));
 
         let isReeling = false;

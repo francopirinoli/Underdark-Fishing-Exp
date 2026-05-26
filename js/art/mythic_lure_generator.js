@@ -272,6 +272,83 @@ export function generateMythicLure(options = {}) {
     }
 
     // ==========================================
+    // MYTHIC LURE 3: THE BRIMSTONE HOOK
+    // ==========================================
+    else if (lureId === 'brimstone_hook') {
+        const cx = 32;
+        let cy = 16;
+        
+        const cWire = '#D97706';      // Copper wire
+        const cBasalt = '#1C1917';    // Black basalt
+        const cBasaltHigh = '#44403C';
+        const cObsidian = '#020617';  // Glossy black
+        const cMagma = '#EF4444';     // Red magma
+        const cMagmaCore = '#FBBF24'; // Yellow hot center
+        
+        // 1. Braided Copper Wire
+        for (let y = 0; y < 14; y++) {
+            setPixel(cx + Math.round(Math.sin(y * 0.8)), y, cWire);
+        }
+
+        // 2. Heavy Basalt Weight
+        const wY = 18;
+        for (let y = -4; y <= 4; y++) {
+            const w = 6 - Math.abs(y); // Diamond/chunk shape
+            for (let x = -w; x <= w; x++) {
+                let c = cBasalt;
+                if (x === -w + 1) c = cBasaltHigh; // Edge highlight
+                
+                // Magma cracks seeping through the rock
+                if (rng.chance(0.25)) c = cMagma;
+                if (c === cMagma && rng.chance(0.3)) c = cMagmaCore;
+                
+                setPixel(cx + x, wY + y, c);
+            }
+        }
+        
+        // 3. Smoking Obsidian Shank
+        const shankEnd = 48;
+        for (let y = 23; y <= shankEnd; y++) {
+            setPixel(cx, y, cObsidian);
+            setPixel(cx - 1, y, cBasaltHigh); // Glint
+            setPixel(cx + 1, y, cBasalt);
+            
+            // Smoke particles rising off the hot shank
+            if (rng.chance(0.15)) {
+                setPixel(cx + rng.pick([-3, -2, 2, 3]), y - rng.int(1, 4), '#44403C');
+            }
+        }
+
+        // 4. The Heated Magma Barb
+        // Curves left and up
+        for (let i = 0; i <= 8; i++) {
+            const hx = cx - i;
+            const hy = shankEnd + Math.round(Math.sin(i * 0.4) * 4);
+            
+            let c = cMagma;
+            if (i > 4) c = cMagmaCore; // Gets hotter near the tip
+            
+            forcePixel(hx, hy, c);
+            forcePixel(hx, hy - 1, cMagma);
+            forcePixel(hx + 1, hy, cBasalt); // Obsidian backing
+        }
+        
+        // Glowing hot tip & Inner barb
+        forcePixel(cx - 8, shankEnd + 1, '#FFFFFF'); // White hot tip
+        forcePixel(cx - 6, shankEnd + 1, cMagmaCore);
+        forcePixel(cx - 5, shankEnd, cMagma);
+
+        // 5. Bubbling ambient heat in the water
+        for (let i = 0; i < 20; i++) {
+            const bx = cx + rng.int(-15, 15);
+            const by = wY + rng.int(-5, 35);
+            if (!grid[by][bx]) {
+                setPixel(bx, by, rng.chance(0.5) ? cMagma : cMagmaCore);
+            }
+        }
+    }
+
+    // ==========================================
     // OUTLINE & RENDER
     // ==========================================
     const outlineGrid = Array(GRID_SIZE).fill(null).map(() => Array(GRID_SIZE).fill(null));

@@ -92,6 +92,14 @@ export const FishingRenderer = {
                 box-sizing: border-box; pointer-events: none; 
                 transition: left 0.1s ease-out, width 0.1s ease-out; 
             }
+            /* --- NEW: SECOND SWEET SPOT FOR IGNIS --- */
+            #fm-sweet-spot-2 { 
+                position: absolute; height: 100%; top: 0; z-index: 2; display: none;
+                background: rgba(239, 68, 68, 0.4); 
+                border-left: 2px solid #EF4444; border-right: 2px solid #EF4444; 
+                box-sizing: border-box; pointer-events: none; 
+                transition: left 0.1s ease-out, width 0.1s ease-out; 
+            }
             
             #bar-tension { background: #3B82F6; } 
             #bar-catch { background: #FBBF24; }
@@ -146,6 +154,7 @@ export const FishingRenderer = {
                                 <div class="bar-track" id="track-reel-power" style="height: 18px; border-color: #4F46E5;">
                                     <div class="bar-fill" id="bar-reel-power" style="width: 50%; background: #6366F1;"></div>
                                     <div id="fm-sweet-spot"></div>
+                                    <div id="fm-sweet-spot-2"></div> <!-- FIX: Added missing DOM element! -->
                                 </div>
                             </div>
                             <div class="depth-readout" id="lbl-depth">Depth: 0m (Surface)</div>
@@ -177,7 +186,8 @@ export const FishingRenderer = {
             barReelPower: document.getElementById('bar-reel-power'),
             lblReelPower: document.getElementById('lbl-reel-power'),
             trackReelPower: document.getElementById('track-reel-power'),
-            sweetSpot: document.getElementById('fm-sweet-spot'), // <-- ADD THIS LINE
+            sweetSpot: document.getElementById('fm-sweet-spot'), 
+            sweetSpot2: document.getElementById('fm-sweet-spot-2'), // <-- NEW
             lblDepth: document.getElementById('lbl-depth'),
             behavior: document.getElementById('fm-behavior')
         };
@@ -457,8 +467,26 @@ export const FishingRenderer = {
         const rightLimit = Math.min(100, engine.currentSweetSpot + tol);
         const dynamicWidth = rightLimit - leftLimit;
 
-        this.elements.sweetSpot.style.left = `${leftLimit}%`;
-        this.elements.sweetSpot.style.width = `${dynamicWidth}%`;
+        // --- NEW: SPLIT SWEET SPOT LOGIC ---
+        if (engine.ai.state === 'SECOND_WIND' && engine.fishData && engine.fishData.id === 'ignis_gorged_serpentine') {
+            this.elements.sweetSpot2.style.display = 'block';
+            
+            const leftLimit1 = Math.max(0, engine.bossState.splitTargets[0] - tol);
+            const width1 = Math.min(100, engine.bossState.splitTargets[0] + tol) - leftLimit1;
+            this.elements.sweetSpot.style.left = `${leftLimit1}%`;
+            this.elements.sweetSpot.style.width = `${width1}%`;
+
+            const leftLimit2 = Math.max(0, engine.bossState.splitTargets[1] - tol);
+            const width2 = Math.min(100, engine.bossState.splitTargets[1] + tol) - leftLimit2;
+            this.elements.sweetSpot2.style.left = `${leftLimit2}%`;
+            this.elements.sweetSpot2.style.width = `${width2}%`;
+        } else {
+            this.elements.sweetSpot2.style.display = 'none';
+            const leftLimit = Math.max(0, engine.currentSweetSpot - tol);
+            const rightLimit = Math.min(100, engine.currentSweetSpot + tol);
+            this.elements.sweetSpot.style.left = `${leftLimit}%`;
+            this.elements.sweetSpot.style.width = `${(rightLimit - leftLimit)}%`;
+        }
         
         this.elements.barReelPower.style.width = `${Math.round(reelPower)}%`;
         this.elements.lblReelPower.innerText = `${Math.round(reelPower)}%`;

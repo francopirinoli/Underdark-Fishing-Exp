@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Volcanic Arena Harness - Underdark Fishing</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        .arena-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-top: 1rem; }
+        .team-panel { background: var(--panel); border: 1px solid var(--border); padding: 1rem; border-radius: 0.5rem; }
+        .team-panel h2 { margin-top: 0; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }
+        
+        .fish-slot { background: var(--bg-2); border: 2px dashed var(--border); border-radius: 0.5rem; padding: 1rem; margin-bottom: 1rem; display: flex; gap: 1rem; align-items: center; position: relative;}
+        .fish-slot img { width: 64px; height: 64px; image-rendering: pixelated; border: 1px solid #1E293B; background: #000; border-radius: 4px; }
+        
+        .stat-badge { font-size: 0.8rem; background: #1E293B; padding: 0.2rem 0.4rem; border-radius: 3px; color: var(--ink); }
+        .hp-bar-bg { width: 100%; height: 10px; background: #000; border: 1px solid #1E293B; margin-top: 0.5rem; border-radius: 4px; overflow: hidden; position: relative;}
+        .hp-bar-fill { height: 100%; background: #22C55E; transition: width 0.2s; position: absolute; left: 0; z-index: 1;}
+        .shield-bar-fill { height: 100%; background: #38BDF8; transition: width 0.2s; position: absolute; right: 0; z-index: 2; opacity: 0.8;}
+        
+        .cd-bar-bg { width: 100%; height: 4px; background: #000; margin-top: 2px; }
+        .cd-bar-fill { height: 100%; background: #FBBF24; width: 100%; transition: width 0.1s linear; }
+        
+        #combat-log { background: #020617; border: 1px solid var(--border); padding: 1rem; height: 250px; overflow-y: auto; font-family: monospace; font-size: 0.85rem; color: #94A3B8; border-radius: 0.5rem; line-height: 1.4;}
+        .log-hit { color: #E2E8F0; }
+        .log-crit { color: #F59E0B; font-weight: bold; }
+        .log-ability { color: #A855F7; }
+        .log-miss { color: #475569; font-style: italic; }
+        .log-shield { color: #38BDF8; }
+        .log-death { color: #EF4444; font-weight: bold; border-top: 1px dashed #334155; padding-top: 0.3rem; margin-top: 0.3rem;}
+        
+        .btn { background: var(--panel-2); border: 1px solid var(--border); color: var(--ink); padding: 0.6rem 1.2rem; border-radius: 0.25rem; cursor: pointer; font-weight: bold; }
+        .btn:hover { border-color: var(--accent); color: var(--accent); }
+        .btn.primary { background: linear-gradient(180deg, #22D3EE, #0E7490); color: #020617; border-color: var(--accent); }
+
+        .status-icons { position: absolute; top: 0.5rem; right: 0.5rem; display: flex; gap: 0.3rem; }
+        .status-icon { width: 14px; height: 14px; border-radius: 50%; border: 1px solid #000; }
+        .status-shield { background: #38BDF8; box-shadow: 0 0 5px #38BDF8; }
+        .status-stun { background: #FDE047; box-shadow: 0 0 5px #FDE047; }
+        .status-poison { background: #22C55E; }
+        .status-blind { background: #0F172A; border-color: #FFF;}
+
+        .floating-dmg { position: absolute; font-weight: bold; text-shadow: 1px 1px 0 #000; animation: floatUp 1s ease-out forwards; pointer-events: none; z-index: 10;}
+        @keyframes floatUp { 0% { transform: translateY(0) scale(1); opacity: 1; } 100% { transform: translateY(-25px) scale(1.5); opacity: 0; } }
+
+        /* Canvas Wrapper */
+        .canvas-wrapper {
+            display: flex; justify-content: center; margin: 1.5rem 0;
+        }
+        #arena-canvas {
+            border: 2px solid var(--border); border-radius: 8px;
+            background: #000; box-shadow: 0 0 30px rgba(239, 68, 68, 0.15);
+        }
+    </style>
+</head>
+<body>
+    <div class="container" style="max-width: 1400px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <h1>🌋 Volcanic Arena Simulator</h1>
+            <a href="index.html" class="btn">← Back to Hub</a>
+        </div>
+
+        <div style="display: flex; gap: 1rem; align-items: center; background: var(--panel); padding: 1rem; border-radius: 0.5rem; border: 1px solid var(--border);">
+            <button class="btn" id="btn-roll-teams">🎲 Roll Random Teams</button>
+            <button class="btn primary" id="btn-start">▶ Start Battle</button>
+            <label style="color: var(--muted); margin-left: 1rem;">Engine Speed: 
+                <select id="sim-speed" style="background: var(--bg-2); color: white; border: 1px solid var(--border); padding: 0.3rem;">
+                    <option value="1">1x</option>
+                    <option value="2">2x</option>
+                    <option value="5">5x</option>
+                </select>
+            </label>
+            <div id="battle-status" style="margin-left: auto; font-size: 1.2rem; font-weight: bold; color: var(--warn);">WAITING</div>
+        </div>
+
+        <!-- THE CANVAS RENDERER -->
+        <div class="canvas-wrapper">
+            <canvas id="arena-canvas"></canvas>
+        </div>
+
+        <div class="arena-grid">
+            <div class="team-panel">
+                <h2>Player Team</h2>
+                <div id="player-slots"></div>
+            </div>
+            <div class="team-panel">
+                <h2>Enemy Team</h2>
+                <div id="enemy-slots"></div>
+            </div>
+        </div>
+
+        <h3 style="margin-top: 1.5rem; color: var(--accent);">Combat Log</h3>
+        <div id="combat-log"></div>
+    </div>
+
+    <script type="module">
+        import { generateFishData, generateFishInstance } from './js/data/fish_data_generator.js';
+        import { ArenaEngine } from './js/fishing/arena_engine.js';
+        import { ArenaRenderer } from './js/fishing/arena_renderer.js';
+        import { createRng } from './js/util/rng.js';
+
+        let playerTeam = [];
+        let enemyTeam = [];
+        let engine = null;
+        let simFrame = null;
+        let lastTime = 0;
+
+        // Initialize the Arena Renderer
+        const canvas = document.getElementById('arena-canvas');
+        ArenaRenderer.init(canvas);
+
+        // Visuals
+        const rarityColors = { 'Common':'#94A3B8', 'Uncommon':'#22C55E', 'Rare':'#3B82F6', 'Legendary':'#F59E0B', 'Boss':'#EF4444' };
+        
+        const getSlotHtml = (fish, team, idx) => {
+            if (!fish) return `<div class="fish-slot"><span class="muted">Empty Slot</span></div>`;
+            return `
+                <div class="fish-slot" id="slot-${team}-${idx}">
+                    <img src="${fish.art.imageDataUrl}">
+                    <div style="flex: 1;">
+                        <b style="color: ${rarityColors[fish.identity.rarity] || '#22D3EE'};">${fish.identity.name}</b> 
+                        <span class="muted" style="font-size:0.8rem; text-transform:uppercase;">[${fish.physical.sizeTier} ${fish.identity.family}]</span>
+                        <div style="margin-top: 0.3rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                            <span class="stat-badge">HP: <span id="hp-val-${team}-${idx}">--</span></span>
+                            <span class="stat-badge">ATK: <span id="atk-val-${team}-${idx}">--</span></span>
+                            <span class="stat-badge">CD: <span id="cd-val-${team}-${idx}">--</span>s</span>
+                            <span class="stat-badge">EVA: <span id="eva-val-${team}-${idx}">--</span>%</span>
+                            <span class="stat-badge" style="color: #FBBF24;">AI: <span id="ai-val-${team}-${idx}">--</span></span>
+                        </div>
+                        <div class="hp-bar-bg">
+                            <div class="hp-bar-fill" id="hp-bar-${team}-${idx}"></div>
+                            <div class="shield-bar-fill" id="shield-bar-${team}-${idx}" style="width: 0%;"></div>
+                        </div>
+                        <div class="cd-bar-bg"><div class="cd-bar-fill" id="cd-bar-${team}-${idx}"></div></div>
+                    </div>
+                    <div class="status-icons" id="status-${team}-${idx}"></div>
+                </div>
+            `;
+        };
+
+        const renderTeams = () => {
+            const pSlots = document.getElementById('player-slots');
+            const eSlots = document.getElementById('enemy-slots');
+            pSlots.innerHTML = ''; eSlots.innerHTML = '';
+            for(let i=0; i<3; i++) {
+                pSlots.innerHTML += getSlotHtml(playerTeam[i], 'player', i);
+                eSlots.innerHTML += getSlotHtml(enemyTeam[i], 'enemy', i);
+            }
+        };
+
+        const generateRandomTeam = (rng) => {
+            const team = [];
+            for(let i=0; i<3; i++) {
+                const template = generateFishData({ seed: rng.next() * 100000 });
+                // We skew the rarity roll so we get a good mix of commons and legendaries in the harness
+                team.push(generateFishInstance(template, createRng(rng.next() * 100000), 20)); 
+            }
+            return team;
+        };
+
+        const logMsg = (msg, cssClass = "") => {
+            const log = document.getElementById('combat-log');
+            log.innerHTML += `<div class="${cssClass}">${msg}</div>`;
+            log.scrollTop = log.scrollHeight;
+        };
+
+        const spawnFloatingText = (slotId, text, color) => {
+            const slot = document.getElementById(slotId);
+            if(!slot) return;
+            const float = document.createElement('div');
+            float.className = 'floating-dmg';
+            float.style.color = color;
+            float.innerText = text;
+            float.style.left = '80px'; 
+            float.style.top = `${Math.random() * 20 + 10}px`; // Slight random scatter
+            slot.appendChild(float);
+            setTimeout(() => float.remove(), 1000);
+        };
+
+        document.getElementById('btn-roll-teams').onclick = () => {
+            if (simFrame) cancelAnimationFrame(simFrame);
+            engine = null;
+            document.getElementById('combat-log').innerHTML = '';
+            document.getElementById('battle-status').innerText = 'WAITING';
+            document.getElementById('battle-status').style.color = 'var(--warn)';
+            
+            const rng = createRng(Date.now());
+            playerTeam = generateRandomTeam(rng);
+            enemyTeam = generateRandomTeam(rng);
+            renderTeams();
+
+            // We must create an empty/dummy engine just to visualize the healthbars on idle
+            engine = new ArenaEngine(playerTeam, enemyTeam);
+            
+            // Inject ImageDataUrls into the engine fighters so the Renderer can load them
+            engine.playerTeam.forEach((f, i) => { if (f) f.imageDataUrl = playerTeam[i].art.imageDataUrl; });
+            engine.enemyTeam.forEach((f, i) => { if (f) f.imageDataUrl = enemyTeam[i].art.imageDataUrl; });
+            
+            ArenaRenderer.loadFighters(engine.playerTeam, engine.enemyTeam);
+            ArenaRenderer.start(); // Start the background/idle loop
+            syncUiToEngine(); // Set initial text values
+        };
+
+        document.getElementById('btn-start').onclick = () => {
+            if (playerTeam.length === 0) return;
+            if (simFrame) cancelAnimationFrame(simFrame);
+            
+            // Re-instantiate to reset state
+            engine = new ArenaEngine(playerTeam, enemyTeam, (event) => {
+                handleArenaEvent(event);
+                ArenaRenderer.handleEvent(event); // Route to visualizer
+            });
+            
+            engine.playerTeam.forEach((f, i) => { if (f) f.imageDataUrl = playerTeam[i].art.imageDataUrl; });
+            engine.enemyTeam.forEach((f, i) => { if (f) f.imageDataUrl = enemyTeam[i].art.imageDataUrl; });
+            
+            ArenaRenderer.loadFighters(engine.playerTeam, engine.enemyTeam);
+            ArenaRenderer.start();
+
+            syncUiToEngine();
+            
+            engine.start();
+            document.getElementById('combat-log').innerHTML = '';
+            document.getElementById('battle-status').innerText = 'FIGHTING';
+            document.getElementById('battle-status').style.color = 'var(--cyan-glow)';
+            
+            lastTime = performance.now();
+            requestAnimationFrame(simLoop);
+        };
+
+        const simLoop = (time) => {
+            if (!engine || engine.state !== 'FIGHTING') return;
+            const speedMult = parseFloat(document.getElementById('sim-speed').value);
+            const dt = Math.min((time - lastTime) / 1000, 0.1) * speedMult;
+            lastTime = time;
+
+            engine.tick(dt);
+            syncUiToEngine();
+
+            if (engine.state === 'FIGHTING') {
+                simFrame = requestAnimationFrame(simLoop);
+            }
+        };
+
+        const syncUiToEngine = () => {
+            if (!engine) return;
+            
+            const updateFighterUI = (fighter) => {
+                if (!fighter) return;
+                const prefix = `${fighter.team}-${fighter.position}`;
+                const slot = document.getElementById(`slot-${prefix}`);
+                if (!slot) return;
+
+                const displayHp = Math.ceil(fighter.hp);
+                document.getElementById(`hp-val-${prefix}`).innerText = `${displayHp}/${fighter.maxHp}` + (fighter.shield > 0 ? ` [+${fighter.shield}]` : '');
+                document.getElementById(`atk-val-${prefix}`).innerText = fighter.atk;
+                document.getElementById(`cd-val-${prefix}`).innerText = fighter.maxCd.toFixed(1);
+                document.getElementById(`eva-val-${prefix}`).innerText = Math.round(fighter.evasion * 100);
+                document.getElementById(`ai-val-${prefix}`).innerText = fighter.aiProfile;
+
+                const hpPct = Math.max(0, (fighter.hp / fighter.maxHp) * 100);
+                document.getElementById(`hp-bar-${prefix}`).style.width = `${hpPct}%`;
+                
+                const shieldPct = Math.min(100, (fighter.shield / fighter.maxHp) * 100);
+                document.getElementById(`shield-bar-${prefix}`).style.width = `${shieldPct}%`;
+                
+                const cdPct = Math.max(0, (1 - (fighter.cd / fighter.maxCd)) * 100);
+                document.getElementById(`cd-bar-${prefix}`).style.width = `${cdPct}%`;
+
+                if (fighter.isDead) {
+                    slot.style.opacity = '0.3';
+                    slot.style.filter = 'grayscale(1)';
+                    document.getElementById(`hp-bar-${prefix}`).style.width = `0%`;
+                    document.getElementById(`shield-bar-${prefix}`).style.width = `0%`;
+                }
+
+                const statusBox = document.getElementById(`status-${prefix}`);
+                let statusHtml = '';
+                if (fighter.shield > 0) statusHtml += '<div class="status-icon status-shield" title="Shielded"></div>';
+                if (fighter.stunTimer > 0) statusHtml += '<div class="status-icon status-stun" title="Stunned"></div>';
+                if (fighter.blindStacks > 0) statusHtml += '<div class="status-icon status-blind" title="Blinded"></div>';
+                fighter.poisonStacks.forEach(() => { statusHtml += '<div class="status-icon status-poison"></div>'; });
+                statusBox.innerHTML = statusHtml;
+            };
+
+            engine.playerTeam.forEach(updateFighterUI);
+            engine.enemyTeam.forEach(updateFighterUI);
+        };
+
+        const handleArenaEvent = (e) => {
+            const timeStr = `[${e.time.toFixed(1)}s]`;
+            
+            if (e.type === 'BATTLE_START') logMsg(`⚔️ Battle Started!`, 'log-ability');
+            
+            else if (e.type === 'SHIELD_BLOCK') {
+                const srcName = e.source ? e.source.name : 'Unknown';
+                logMsg(`${timeStr} 🛡️ ${e.target.name}'s shield absorbs ${e.blocked} damage from ${srcName}!`, 'log-shield');
+                spawnFloatingText(`slot-${e.target.team}-${e.target.position}`, `BLOCK`, '#38BDF8');
+            }
+            
+            else if (e.type === 'DAMAGE') {
+                const srcName = e.source ? e.source.name : 'Unknown';
+                const style = e.isSuperEffective ? 'log-crit' : 'log-hit';
+                const effectText = e.isSuperEffective ? ' (Super Effective!)' : '';
+                
+                if (e.dmgType === 'POISON') {
+                    spawnFloatingText(`slot-${e.target.team}-${e.target.position}`, `-${e.amount}`, '#22C55E');
+                } else if (e.dmgType === 'SPLASH') {
+                    logMsg(`${timeStr} 🌊 ${e.target.name} takes ${e.amount} Splash damage from ${srcName}.`, 'log-hit');
+                    spawnFloatingText(`slot-${e.target.team}-${e.target.position}`, `-${e.amount}`, '#FCA5A5');
+                } else {
+                    logMsg(`${timeStr} 🗡️ ${srcName} hits ${e.target.name} for ${e.amount} damage.${effectText}`, style);
+                    spawnFloatingText(`slot-${e.target.team}-${e.target.position}`, `-${e.amount}`, e.isSuperEffective ? '#FBBF24' : '#EF4444');
+                }
+            }
+            else if (e.type === 'MISS') {
+                logMsg(`${timeStr} 💨 ${e.attacker.name} attacks ${e.target.name} but ${e.reason}!`, 'log-miss');
+                spawnFloatingText(`slot-${e.target.team}-${e.target.position}`, e.reason, '#94A3B8');
+            }
+            else if (e.type === 'ABILITY') {
+                let valText = e.value ? ` (${e.value})` : '';
+                logMsg(`${timeStr} ✨ ${e.attacker.name} uses [${e.ability}] on ${e.target.name}!${valText}`, 'log-ability');
+                
+                if (e.ability === 'Vampiric Bite') spawnFloatingText(`slot-${e.attacker.team}-${e.attacker.position}`, `+${e.value}`, '#F472B6');
+                if (e.ability === 'Schooling Shield') spawnFloatingText(`slot-${e.target.team}-${e.target.position}`, `SHIELD`, '#38BDF8');
+            }
+            else if (e.type === 'DEATH') {
+                logMsg(`${timeStr} 💀 ${e.target.name} has been defeated!`, 'log-death');
+            }
+            else if (e.type === 'BATTLE_END') {
+                const statusEl = document.getElementById('battle-status');
+                if (e.winner === 'PLAYER') {
+                    statusEl.innerText = 'VICTORY!'; statusEl.style.color = '#22C55E';
+                } else if (e.winner === 'ENEMY') {
+                    statusEl.innerText = 'DEFEAT!'; statusEl.style.color = '#EF4444';
+                } else {
+                    statusEl.innerText = 'TIMEOUT / DRAW!'; statusEl.style.color = '#94A3B8';
+                }
+                logMsg(`🏁 BATTLE CONCLUDED. Winner: ${e.winner}`, 'log-ability');
+            }
+        };
+
+        // Init
+        document.getElementById('btn-roll-teams').click();
+    </script>
+</body>
+</html>

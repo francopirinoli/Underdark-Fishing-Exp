@@ -157,6 +157,31 @@ export function generateFishData(options = {}) {
         };
     }
 
+    // --- NEW: BOSS DATA INTERCEPT (Volcanic) ---
+    if (options.bossId === 'ignis_gorged_serpentine') {
+        const artPhase1 = generateBossArt({ bossId: 'ignis_gorged_serpentine', rng: artRng, phase: 1 });
+        const artPhase2 = generateBossArt({ bossId: 'ignis_gorged_serpentine', rng: artRng, phase: 2 });
+        const artPhase3 = generateBossArt({ bossId: 'ignis_gorged_serpentine', rng: artRng, phase: 3 });
+        
+        return {
+            id: 'ignis_gorged_serpentine', 
+            seed: seed,
+            identity: { name: 'Ignis-Gorged Serpentine', family: 'eel', rarity: 'Boss' },
+            art: { 
+                imageDataUrl: artPhase1.imageDataUrl, 
+                phaseUrls: { 1: artPhase1.imageDataUrl, 2: artPhase2.imageDataUrl, 3: artPhase3.imageDataUrl },
+                palette: 'Magma Vent', metadata: {} 
+            },
+            environment: { biomes: ['volcanic'], depthPref: 'Bottom-feeder', tempPref: 100, activeHours: 'Always Active' },
+            // Matched to the Brimstone Hook
+            lurePrefs: { color: 95, sound: 80, light: 70, weight: 90, tolerance: 0.15 }, 
+            physical: { sizeTier: 'Massive', weightRange: { min: 1800.0, max: 2800.0 } },
+            // Boss mechanics: high speed, deep run zones
+            combat: { stamina: 350, speed: 45, aggression: 0.85, hookWindowMs: 2000, optimalReel: 35 },
+            economy: { pricePerKg: 12.0, baseValue: 20000, baseXp: 750 }
+        };
+    }
+
     let availableFamilies = Object.keys(ART_GENERATORS);
     if (options.biomeId && options.biomeId !== 'abyssal') {
         availableFamilies = availableFamilies.filter(f => f !== 'deepsea');

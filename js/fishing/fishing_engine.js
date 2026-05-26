@@ -53,6 +53,10 @@ export const FishingEngine = {
     hookTimerMs: 0,
     fightTimer: 0,    
     maxFightTimer: 0,
+
+    // --- NEW: Boss Mechanics State ---
+    bossState: { heatVentTimer: 0, splitTargets: [50, 50] },
+    onBossStrike: null, // Callback to damage the player's hull
     
     ai: { state: 'HOLD', timer: 0, aggression: 0, isResting: false },
 
@@ -80,8 +84,11 @@ export const FishingEngine = {
         this.reelPower = 50;      
         this.currentSweetSpot = 50; 
         this.targetSweetSpot = 50;  
-        this.currentTolerance = this.playerStats.minigame.sweetSpotTolerance; // <-- ADD THIS LINE
+        this.currentTolerance = this.playerStats.minigame.sweetSpotTolerance; 
         this.inSweetSpot = false;
+        
+        this.bossState = { heatVentTimer: 0, splitTargets: [50, 50] }; // <-- NEW
+        this.onBossStrike = null; // <-- NEW
         
         this.phase = 'SINKING';
         this.ai.isResting = false;
@@ -247,6 +254,7 @@ export const FishingEngine = {
             if (this.fishData.identity.rarity === 'Boss') {
                 if (this.fishData.id === 'vesper_bloom_leviathan') duration = 15.0; // 15s for Fungal
                 else if (this.fishData.id === 'geode_monarch') duration = 12.0;       // 12s for Crystal
+                else if (this.fishData.id === 'ignis_gorged_serpentine') duration = 13.0; // 13s for Lava
                 else duration = 12.0; // Standard boss fallback
             }
 
@@ -272,9 +280,10 @@ export const FishingEngine = {
             if (this.ai.state === 'SECOND_WIND') {
                 // --- NEW: Boss Recovery Penalties ---
                 if (this.fishData.identity.rarity === 'Boss') {
-                    // Determine how much stamina the specific boss recovers upon player timeout
                     if (this.fishData.id === 'geode_monarch') {
                         this.fishStamina = this.maxFishStamina * 0.4; // 40% recovery for Crystal
+                    } else if (this.fishData.id === 'ignis_gorged_serpentine') {
+                        this.fishStamina = this.maxFishStamina * 0.5; // 50% recovery for Lava
                     } else {
                         this.fishStamina = this.maxFishStamina * 0.5; // 50% recovery for Fungal
                     }
@@ -371,61 +380,98 @@ _applyPhysics(dt, isReeling) {
         
         this.currentTolerance = Math.max(3.5, baseTol - fishPenalty);
         
+        const isIgnis = this.fishData.id === 'ignis_gorged_serpentine';
+        const isIgnisPhase3 = (this.ai.state === 'SECOND_WIND' && isIgnis);
+        const isIgnisPhase2 = (!isIgnisPhase3 && isIgnis && fishStamPct <= 0.5);
+        
         // --- NEW: Boss Tolerance Overrides ---
         if (this.ai.state === 'SECOND_WIND' && this.fishData.identity.rarity === 'Boss') {
-            if (this.fishData.id === 'vesper_bloom_leviathan') {
-                this.currentTolerance = 2.5; // Extremely tight
-            } else if (this.fishData.id === 'geode_monarch') {
-                this.currentTolerance = 2.0; // Paper-thin ±2% for Crystal Crab
-            } else {
-                this.currentTolerance = 2.0; // Fallback
-            }
+            if (this.fishData.id === 'vesper_bloom_leviathan') this.currentTolerance = 2.5; 
+            else if (this.fishData.id === 'geode_monarch') this.currentTolerance = 2.0; 
+            else if (isIgnisPhase3) this.currentTolerance = 2.0; 
+            else this.currentTolerance = 2.0; 
         }
         
         const tol = this.currentTolerance; 
+        const timeSec = Date.now() / 1000;
         
-        if (this.ai.state !== 'INANIMATE' && this.ai.state !== 'THRASH') {
-            const timeSec = Date.now() / 1000;
-            let wobbleSpeed = fishSpeed * 0.025; 
-            let wobbleWidth = fishSpeed * 0.12 * fishAggro; 
+        // --- IGNIS SPLIT SWEET SPOT LOGIC ---
+        if (isIgnisPhase3) {
+            // Split into two rapidly drifting targets
+            const target1 = clamp(35 + Math.sin(timeSec * 3.5) * 30, 5, 100);
+            const target2 = clamp(65 + Math.cos(timeSec * 4.2) * 30, 5, 100);
             
-            // --- NEW: Boss Wobble & Sweep Overrides during Second Wind ---
-            if (this.ai.state === 'SECOND_WIND' && this.fishData.identity.rarity === 'Boss') {
-                if (this.fishData.id === 'vesper_bloom_leviathan') {
-                    wobbleSpeed *= 2.5; // Rapid drift
-                    wobbleWidth = 35;   // Wide sweep distance
-                    const wobble = Math.sin(timeSec * wobbleSpeed) * wobbleWidth;
-                    finalTargetSweet = clamp(this.targetSweetSpot + wobble, 5, 100);
-                } else if (this.fishData.id === 'geode_monarch') {
-                    // CRYSTAL SWEEP: Pure, high-speed, smooth trigonometric glide back and forth
-                    const sweepSpeed = 8.0; 
-                    finalTargetSweet = 50 + Math.sin(timeSec * sweepSpeed) * 42; // Sweeps smoothly between 8% and 92%
+            this.bossState.splitTargets[0] += (target1 - this.bossState.splitTargets[0]) * 10 * dt;
+            this.bossState.splitTargets[1] += (target2 - this.bossState.splitTargets[1]) * 10 * dt;
+            
+            const powerDiff1 = this.reelPower - this.bossState.splitTargets[0];
+            const powerDiff2 = this.reelPower - this.bossState.splitTargets[1];
+            
+            this.inSweetSpot = Math.abs(powerDiff1) <= tol || Math.abs(powerDiff2) <= tol;
+        } 
+        // STANDARD SWEET SPOT LOGIC
+        else {
+            if (this.ai.state !== 'INANIMATE' && this.ai.state !== 'THRASH') {
+                let wobbleSpeed = fishSpeed * 0.025; 
+                let wobbleWidth = fishSpeed * 0.12 * fishAggro; 
+                
+                if (this.ai.state === 'SECOND_WIND' && this.fishData.identity.rarity === 'Boss') {
+                    if (this.fishData.id === 'vesper_bloom_leviathan') {
+                        wobbleSpeed *= 2.5; wobbleWidth = 35; 
+                        finalTargetSweet = clamp(this.targetSweetSpot + Math.sin(timeSec * wobbleSpeed) * wobbleWidth, 5, 100);
+                    } else if (this.fishData.id === 'geode_monarch') {
+                        finalTargetSweet = 50 + Math.sin(timeSec * 8.0) * 42; // Prismatic sweep
+                    }
+                } else {
+                    finalTargetSweet = clamp(this.targetSweetSpot + Math.sin(timeSec * wobbleSpeed) * wobbleWidth, 5, 100);
                 }
-            } else {
-                const wobble = Math.sin(timeSec * wobbleSpeed) * wobbleWidth;
-                finalTargetSweet = clamp(this.targetSweetSpot + wobble, 5, 100);
             }
+
+            let shiftSpeed = 1.5 + (fishSpeed * 0.015); 
+            if (this.ai.state === 'BURST') shiftSpeed = 12.0;
+            if (this.ai.state === 'THRASH') shiftSpeed = 8.0;
+
+            this.currentSweetSpot += (finalTargetSweet - this.currentSweetSpot) * shiftSpeed * dt;
+            this.currentSweetSpot = clamp(this.currentSweetSpot, 5, 100);
+
+            const powerDiff = this.reelPower - this.currentSweetSpot;
+            this.inSweetSpot = Math.abs(powerDiff) <= tol;
         }
-
-        let shiftSpeed = 1.5 + (fishSpeed * 0.015); 
-        if (this.ai.state === 'BURST') shiftSpeed = 12.0; // Was 15.0
-        if (this.ai.state === 'THRASH') shiftSpeed = 8.0; // Was 10.0
-
-        this.currentSweetSpot += (finalTargetSweet - this.currentSweetSpot) * shiftSpeed * dt;
-        this.currentSweetSpot = clamp(this.currentSweetSpot, 5, 100);
-
-        const powerDiff = this.reelPower - this.currentSweetSpot;
-        this.inSweetSpot = Math.abs(powerDiff) <= tol;
 
         const dragNorm = clamp(this.reelPower / 100, 0.1, 1.0);
 
+        // --- NEW: IGNIS HULL DAMAGE HAZARDS ---
+        if (isIgnisPhase2) {
+            if (isReeling && !this.inSweetSpot) {
+                this.bossState.heatVentTimer += dt;
+                if (this.bossState.heatVentTimer >= 1.5) { // Needs 1.5s consecutive mistake to trigger
+                    this.bossState.heatVentTimer = 0;
+                    const isImmune = this.playerStats.exploration.immunities && this.playerStats.exploration.immunities.volcanic;
+                    if (!isImmune && this.onBossStrike) {
+                        this.onBossStrike(5, "Steam Vent");
+                    }
+                }
+            } else {
+                this.bossState.heatVentTimer = 0; // Resets cleanly
+            }
+        } else if (isIgnisPhase3) {
+            // Eruption: Takes 10 damage per second if reeling outside sweet spots, or holding 100% tension
+            if ((isReeling && !this.inSweetSpot) || this.reelPower >= 99) {
+                this.bossState.heatVentTimer += dt;
+                if (this.bossState.heatVentTimer >= 1.0) {
+                    this.bossState.heatVentTimer = 0;
+                    if (this.onBossStrike) this.onBossStrike(10, "Thermal Overload");
+                }
+            } else {
+                this.bossState.heatVentTimer = 0;
+            }
+        }
+
         // --- 3. PLAYER EXHAUSTION & SHOCK ABSORBER MATH ---
+        // (Keep the rest of your math logic identically below this line)
         const playerExhausted = this.playerStamina <= 0;
         
-        // Dynamically compute Reeling Power based on biological and environmental traits
         let rawRodPower = this.playerStats.minigame.power;
-
-        // Apply Biome Banes (+20% power boost)
         const activeBiomes = this.fishData.environment.biomes || [];
         if (traits.includes('abyssal_bane') && activeBiomes.includes('abyssal')) rawRodPower *= 1.20;
         if (traits.includes('fungal_bane') && activeBiomes.includes('fungal')) rawRodPower *= 1.20;
@@ -433,7 +479,6 @@ _applyPhysics(dt, isReeling) {
         if (traits.includes('volcanic_bane') && activeBiomes.includes('volcanic')) rawRodPower *= 1.20;
         if (traits.includes('frozen_bane') && activeBiomes.includes('frozen')) rawRodPower *= 1.20;
 
-        // Apply Family Specialist Tamers (+25% power boost)
         const family = this.fishData.identity.family;
         if (traits.includes('shark_tamer') && family === 'shark') rawRodPower *= 1.25;
         if (traits.includes('eel_tamer') && family === 'eel') rawRodPower *= 1.25;
@@ -454,8 +499,6 @@ _applyPhysics(dt, isReeling) {
 
         // --- 4. ELASTIC TENSION MATH ---
         let tensionDelta = 0;
-        
-        // Apply Tension Dampener: Reduces the massive pull force of "Burst" behaviors by 40%
         let burstMultiplier = 1.0;
         if (this.ai.state === 'BURST' && traits.includes('tension_dampener')) {
             burstMultiplier = 0.60;
@@ -464,11 +507,19 @@ _applyPhysics(dt, isReeling) {
 
         if (isReeling) {
             this.playerStaminaDelayTimer = 1.0; 
-            
             let tensionBuild = (baseFishPull * dragNorm * 1.35) + (this.reelPower * 0.45);
             
             if (!this.inSweetSpot) {
-                const overpull = Math.max(0, Math.abs(powerDiff) - tol) / 50;
+                let overpull = 0;
+                if (isIgnisPhase3) {
+                    // Punish based on the closest target
+                    const diff1 = Math.max(0, Math.abs(this.reelPower - this.bossState.splitTargets[0]) - tol);
+                    const diff2 = Math.max(0, Math.abs(this.reelPower - this.bossState.splitTargets[1]) - tol);
+                    overpull = Math.min(diff1, diff2) / 50;
+                } else {
+                    const powerDiff = this.reelPower - this.currentSweetSpot;
+                    overpull = Math.max(0, Math.abs(powerDiff) - tol) / 50;
+                }
                 tensionBuild *= (1.0 + Math.pow(overpull, 1.5) * 2.0); 
             } else {
                 tensionBuild *= 0.45; 
@@ -478,10 +529,8 @@ _applyPhysics(dt, isReeling) {
         } else {
             this.playerStaminaDelayTimer -= dt;
             const flex = this.playerStats.minigame.flexibility;
-            
             const tensionDecay = 65 * flex * (1.1 - dragNorm);
             const passivePullTension = baseFishPull * dragNorm * 0.5;
-            
             tensionDelta = passivePullTension - tensionDecay;
         }
 
@@ -490,7 +539,6 @@ _applyPhysics(dt, isReeling) {
         this.tension = clamp(this.tension + tensionDelta * dt, 0, this.maxTension + 5);
 
         // --- 5. STAMINA DRAIN ---
-        
         if (isReeling) {
             const resistance = Math.max(1.0, behavior.pullMult); 
             const drainRate = 35 * resistance * Math.pow(dragNorm + 0.2, 1.2); 
@@ -515,22 +563,17 @@ _applyPhysics(dt, isReeling) {
             fishDrain += (14 * effectiveRodPower) / Math.pow(clampedWfProgress, 0.7);
         }
 
-        // Apply Feather Cast: Drains fish stamina 20% faster while resting (not reeling)
         if (!isReeling && !behavior.invincible && traits.includes('feather_cast')) {
-            if (fishDrain > 0) {
-                fishDrain *= 1.20; // 20% faster drain
-            } else if (fishDrain < 0) {
-                fishDrain *= 0.80; // 20% slower recovery/regeneration
-            }
+            if (fishDrain > 0) fishDrain *= 1.20; 
+            else if (fishDrain < 0) fishDrain *= 0.80; 
         }
 
         this.fishStamina -= fishDrain * dt;
         this.fishStamina = clamp(this.fishStamina, 0, this.maxFishStamina);
 
 
-        // --- 6. CATCH PROGRESS (The True Tug-of-War) ---
+        // --- 6. CATCH PROGRESS ---
         let escapeSpeed = baseFishPull * (1.1 - dragNorm) * 0.10;
-        
         if (this.ai.state === 'RUN') {
             const speedAdvantage = Math.max(0, fishSpeed - (effectiveRodPower * 30));
             escapeSpeed += speedAdvantage * 0.06 * clampedWfProgress;

@@ -440,6 +440,119 @@ export function generateBossArt(options = {}) {
     }
 
     // ==========================================
+    // BOSS 3: IGNIS-GORGED SERPENTINE (Volcanic)
+    // ==========================================
+    else if (bossId === 'ignis_gorged_serpentine') {
+        const cx = 32, cy = 32;
+        
+        // 3-Phase Dynamic Palette (Gets progressively hotter)
+        let pal;
+        if (phase === 1) { // Cooling crust
+            pal = { armor: '#1C1917', armorHigh: '#44403C', flesh: '#450A0A', magma: '#DC2626', core: '#F59E0B', eye: '#FEF08A' };
+        } else if (phase === 2) { // Active lava
+            pal = { armor: '#292524', armorHigh: '#57534E', flesh: '#7F1D1D', magma: '#EA580C', core: '#FEF08A', eye: '#FFFFFF' };
+        } else { // White-hot eruption
+            pal = { armor: '#44403C', armorHigh: '#78716C', flesh: '#B91C1C', magma: '#FBBF24', core: '#FFFFFF', eye: '#FFFFFF' };
+        }
+        
+        const { armor, armorHigh, flesh, magma, core, eye } = pal;
+
+        // A massive, coiled armored eel body
+        const bodyLength = 48;
+        const maxThick = 9;
+        const waveFreq = 0.25;
+        const waveAmp = 12;
+
+        const path = [];
+        let headX = cx + 15;
+        
+        // Map the snake body path
+        for (let i = 0; i < bodyLength; i++) {
+            const t = i / bodyLength; 
+            const x = headX - Math.floor(i * 0.9); // Scrunch it up slightly
+            const y = cy + Math.sin(i * waveFreq) * waveAmp;
+
+            let thick = maxThick;
+            if (t < 0.15) thick = Math.max(3, maxThick * (t / 0.15)); // Head taper
+            if (t > 0.7) thick = Math.max(1, maxThick * (1 - ((t - 0.7) / 0.3))); // Tail taper
+
+            path.push({ x, y, thick, index: i, t });
+        }
+        path.reverse(); // Draw tail to head
+
+        // Render the body segments
+        for (let pt of path) {
+            const r = Math.max(1, Math.floor(pt.thick / 2));
+            
+            for (let dy = -r; dy <= r; dy++) {
+                const w = Math.floor(r * Math.sqrt(1 - Math.pow(dy / r, 2)));
+                for (let dx = -w; dx <= w; dx++) {
+                    let c = flesh;
+                    
+                    // Armored plates on the top half
+                    if (dy < 0) {
+                        c = armor;
+                        if (dx === -w + 1 || dy === -r + 1) c = armorHigh;
+                    }
+                    
+                    // Magma veins running through the flesh
+                    if (dy >= 0) {
+                        if ((pt.index + dx) % 4 === 0) c = magma;
+                        if (c === magma && rng.chance(0.4)) c = core;
+                    }
+
+                    forcePixel(pt.x + dx, pt.y + dy, c);
+                }
+            }
+
+            // Dorsal Spikes (Obsidian shards)
+            if (pt.index % 5 === 0 && pt.index > 5 && pt.index < bodyLength - 5) {
+                const spikeH = Math.max(2, Math.floor(pt.thick * 0.6));
+                for(let sy = 1; sy <= spikeH; sy++) {
+                    forcePixel(pt.x, pt.y - r - sy, armor);
+                    forcePixel(pt.x - 1, pt.y - r - sy + 1, armorHigh);
+                }
+            }
+        }
+
+        // The Head (Drill-like armored wedge)
+        const head = path[path.length - 1];
+        for(let dx = 0; dx < 8; dx++) {
+            const hw = Math.max(1, 4 - Math.floor(dx / 2));
+            for(let dy = -hw; dy <= hw; dy++) {
+                let c = dy < 0 ? armor : flesh;
+                if (dy < 0 && dx === 2) c = armorHigh;
+                if (dx > 4) c = armor; // Armored snout tip
+                forcePixel(head.x + dx, head.y + dy, c);
+            }
+        }
+        
+        // Jaw & Teeth
+        forcePixel(head.x + 3, head.y + 2, '#000000'); // Mouth line
+        forcePixel(head.x + 5, head.y + 3, '#000000'); 
+        forcePixel(head.x + 2, head.y + 3, armorHigh); // Bottom jaw
+        forcePixel(head.x + 4, head.y + 4, armorHigh);
+        
+        // Obsidian Teeth
+        forcePixel(head.x + 3, head.y + 1, armor);
+        forcePixel(head.x + 5, head.y + 2, armor);
+
+        // Glowing Eye
+        forcePixel(head.x + 2, head.y - 1, eye);
+        forcePixel(head.x + 3, head.y - 1, core);
+
+        // Boiling water bubbles/steam
+        for (let i = 0; i < 25; i++) {
+            const px = rng.int(5, GRID_SIZE - 5);
+            const py = rng.int(5, cy + 15);
+            if (!grid[py][px]) {
+                grid[py][px] = 'AMBIENT';
+                forcePixel(px, py, rng.chance(0.5) ? magma : core);
+            }
+        }
+    }
+
+    // ==========================================
     // UNIVERSAL OUTLINE PASS & RENDER
     // ==========================================
     const outlineGrid = Array(GRID_SIZE).fill(null).map(() => Array(GRID_SIZE).fill(null));

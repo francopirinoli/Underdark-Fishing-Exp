@@ -198,8 +198,18 @@ function loadExistingDescent(slot) {
     player.reagents = player.reagents || [];       
     player.activeBuffs = player.activeBuffs || []; 
     player.activeQuests = player.activeQuests || [];
-    player.completedQuests = player.completedQuests || []; // <-- NEW: Catch old saves
+    player.completedQuests = player.completedQuests || []; 
     player.bestiary = player.bestiary || {};
+
+    player.endgameProgress = player.endgameProgress || {};
+    if (!player.endgameProgress.fungal) player.endgameProgress.fungal = { totalCompostKg: 0, currentGoalIdx: 0 };
+    if (!player.endgameProgress.crystal || Array.isArray(player.endgameProgress.crystal.filledSlots)) {
+        player.endgameProgress.crystal = { filledSlots: {}, curatorRating: 0, currentGoalIdx: 0 };
+    }
+    // --- NEW: Safe initialization for older saves ---
+    if (!player.endgameProgress.lava) {
+        player.endgameProgress.lava = { currentTier: 1, endlessScore: 0, roster: [null, null, null] };
+    }
 
     discoveredNodes = data.discoveredNodes || [`${data.globalX},${data.globalY}`];
     world = generateGlobalMap(data.worldSeed, discoveredNodes); 
@@ -954,7 +964,6 @@ function handleAttemptCast() {
                 document.getElementById('z50-action').style.display = 'flex';
                 document.getElementById('z50-action').style.background = 'transparent';
 
-                // Send to minigame (Locks maximum depth to 50m)
                 FishingEngine.startCast(effStats, player.stats.stamina, castPool, 50, gameTimeMinutes);
                 FishingRenderer.open({ lureDataUrl: equippedLure.imageDataUrl || '', biome: currentBiome, tileId: tId });
                 
@@ -964,7 +973,46 @@ function handleAttemptCast() {
                     }
                 }, 6000);
                 
-                return; // Exit cast early
+                return; 
+            }
+            // --- NEW: VOLCANIC ARENA SUMMONING BYPASS ---
+            else if (targetNode.poi === 'volcanic_arena' && equippedLure && equippedLure.id === 'lure_brimstone_hook') {
+                HUD.logAction("The Brimstone Hook boils the water. A massive shadow rises from the caldera...", "warn");
+                
+                const bossData = generateFishData({ bossId: 'ignis_gorged_serpentine', seed: Date.now() });
+                const bossInstance = generateFishInstance(bossData, createRng(Date.now()));
+                
+                const castPool = [bossInstance];
+                
+                currentState = STATE.FISHING;
+                document.getElementById('z50-action').style.display = 'flex';
+                document.getElementById('z50-action').style.background = 'transparent';
+
+                FishingEngine.startCast(effStats, player.stats.stamina, castPool, 50, gameTimeMinutes);
+                
+                // Attach the Hull Damage callback for the Boss's heat vents
+                FishingEngine.onBossStrike = (amount, reason) => {
+                    player.vitals.hp -= amount;
+                    SFX.playError();
+                    
+                    if (reason === "Steam Vent") HUD.logAction(`Boiling steam vent! Hull took ${amount} damage.`, "danger");
+                    else if (reason === "Thermal Overload") HUD.logAction(`Thermal overload! Hull took ${amount} damage.`, "danger");
+
+                    if (player.vitals.hp <= 0) {
+                        handleEndFishing("Your boat was melted by the Serpentine!", "danger");
+                        handleDeath();
+                    }
+                };
+
+                FishingRenderer.open({ lureDataUrl: equippedLure.imageDataUrl || '', biome: currentBiome, tileId: tId });
+                
+                setTimeout(() => {
+                    if (currentState === STATE.FISHING && FishingEngine.phase === 'SINKING') {
+                        if (!FishingEngine.evaluateBite()) handleEndFishing("The Serpentine refused to emerge.", "danger");
+                    }
+                }, 6000);
+                
+                return; 
             }
 
             // --- END MYTHIC BYPASS ---
@@ -1170,8 +1218,21 @@ function handleAttemptCast() {
             document.getElementById('z50-action').style.display = 'flex';
             document.getElementById('z50-action').style.background = 'transparent';
 
-            // --- FIX: Pass gameTimeMinutes as the 5th parameter ---
             FishingEngine.startCast(effStats, player.stats.stamina, castPool, maxDepth, gameTimeMinutes);
+            
+            // --- NEW: BOSS HAZARD CALLBACK ---
+            FishingEngine.onBossStrike = (amount, reason) => {
+                player.vitals.hp -= amount;
+                SFX.playError();
+                
+                if (reason === "Steam Vent") HUD.logAction(`Boiling steam vent! Hull took ${amount} damage.`, "danger");
+                else if (reason === "Thermal Overload") HUD.logAction(`Thermal overload! Hull took ${amount} damage.`, "danger");
+
+                if (player.vitals.hp <= 0) {
+                    handleEndFishing("Your boat was destroyed by the Leviathan!", "danger");
+                    handleDeath();
+                }
+            };
             
             FishingRenderer.open({ lureDataUrl: player.gear.lure.imageDataUrl || '', biome: currentBiome, tileId: tId });
             HUD.logAction(`Line cast to ${maxDepth}m. Scroll to sink.`);
@@ -1199,17 +1260,21 @@ function handleEndFishing(msg, type) {
         
         let isMythicConsumed = false;
 
-        // Check if we successfully caught a Boss with its respective Mythic Lure
+// Check if we successfully caught a Boss with its respective Mythic Lure
         if (FishingEngine.phase === 'CAUGHT' && FishingEngine.fishData && FishingEngine.fishData.identity.rarity === 'Boss') {
             const caughtId = FishingEngine.fishData.id;
             if (lure.id === 'lure_mycelial_hook' && caughtId === 'vesper_bloom_leviathan') {
                 isMythicConsumed = true;
                 HUD.logAction(`The ${lure.name} shatters after fulfilling its purpose!`, "warn");
             }
-            // --- NEW: Prismatic Geode Hook Shatter ---
             else if (lure.id === 'lure_prismatic_geode_hook' && caughtId === 'geode_monarch') {
                 isMythicConsumed = true;
                 HUD.logAction(`The ${lure.name} shatters into beautiful crystal dust!`, "warn");
+            }
+            // --- NEW: Brimstone Hook Shatter ---
+            else if (lure.id === 'lure_brimstone_hook' && caughtId === 'ignis_gorged_serpentine') {
+                isMythicConsumed = true;
+                HUD.logAction(`The ${lure.name} melts into useless slag!`, "warn");
             }
         }
 

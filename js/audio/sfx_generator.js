@@ -82,6 +82,29 @@ export const SFX = {
         }).connect(AudioEngine.sfxNode);
         SYNTHS.dialogue.volume.value = -16;
 
+        // --- NEW: ARENA COMBAT SYNTHS ---
+        SYNTHS.arenaHit = new Tone.Synth({
+            oscillator: { type: 'square' }, 
+            envelope: { attack: 0.005, decay: 0.1, sustain: 0, release: 0.05 }
+        }).connect(AudioEngine.sfxNode);
+        SYNTHS.arenaHit.volume.value = -6; // Boosted volume for clear impact
+
+        SYNTHS.arenaCrit = new Tone.MetalSynth({
+            frequency: 600, envelope: { attack: 0.001, decay: 0.1, release: 0.05 },
+            harmonicity: 4.1, modulationIndex: 16, resonance: 4000, octaves: 1.5
+        }).connect(AudioEngine.sfxNode);
+        SYNTHS.arenaCrit.volume.value = -12;
+
+        SYNTHS.arenaBlock = new Tone.MembraneSynth({
+            pitchDecay: 0.01, octaves: 1, envelope: { attack: 0.001, decay: 0.15, sustain: 0, release: 0.1 }
+        }).connect(AudioEngine.sfxNode);
+        SYNTHS.arenaBlock.volume.value = -8;
+
+        SYNTHS.arenaEvade = new Tone.NoiseSynth({
+            noise: { type: 'white' }, envelope: { attack: 0.01, decay: 0.1, sustain: 0, release: 0.05 }
+        }).connect(AudioEngine.sfxNode);
+        SYNTHS.arenaEvade.volume.value = -14;
+
         // --- CONTINUOUS STREAM SYNTHS ---
         SYNTHS.reelOsc = new Tone.Oscillator({ type: 'square' }).start();
         SYNTHS.reelFilter = new Tone.Filter(1000, "bandpass", -24);
@@ -156,6 +179,22 @@ export const SFX = {
         SYNTHS.catch.triggerAttackRelease("G5", "4n", now + 0.2);
         SYNTHS.catch.triggerAttackRelease("C6", "2n", now + 0.3);
     },
+    
+    // --- NEW: ARENA COMBAT TRIGGERS ---
+playArenaHit() { 
+        try { 
+            if (SYNTHS.arenaHit) {
+                const now = Tone.now() + LOOKAHEAD;
+                // Rapid downward pitch sweep creates a classic 8-bit "punch"
+                SYNTHS.arenaHit.frequency.setValueAtTime("C4", now);
+                SYNTHS.arenaHit.frequency.exponentialRampToValueAtTime("C2", now + 0.1);
+                SYNTHS.arenaHit.triggerAttackRelease("32n", now); 
+            }
+        } catch(e){} 
+    },
+    playArenaCrit() { try { if (SYNTHS.arenaCrit) SYNTHS.arenaCrit.triggerAttackRelease("32n", Tone.now() + LOOKAHEAD); } catch(e){} },
+    playArenaBlock() { try { if (SYNTHS.arenaBlock) SYNTHS.arenaBlock.triggerAttackRelease("G1", "16n", Tone.now() + LOOKAHEAD); } catch(e){} },
+    playArenaEvade() { try { if (SYNTHS.arenaEvade) SYNTHS.arenaEvade.triggerAttackRelease("32n", Tone.now() + LOOKAHEAD); } catch(e){} },
     
     playLevelUp() {
         if (!SYNTHS.levelUp) return;

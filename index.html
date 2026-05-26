@@ -236,6 +236,10 @@
                     <!-- NEW: Crystal Museum Tabs (Hidden by default) -->
                     <button class="hub-tab-btn" data-tab="exhibition" style="display: none; border-color: #38BDF8; color: #38BDF8;">Exhibitions</button>
                     <button class="hub-tab-btn" data-tab="curator" style="display: none; border-color: #38BDF8; color: #38BDF8;">Curator Zephyr</button>
+
+                    <!-- NEW: Volcanic Arena Tabs (Hidden by default) -->
+                    <button class="hub-tab-btn" data-tab="arena" style="display: none; border-color: #EF4444; color: #EF4444;">The Arena</button>
+                    <button class="hub-tab-btn" data-tab="master" style="display: none; border-color: #EF4444; color: #EF4444;">Gladiator-Master</button>
                 </div>
                 <button class="menu-btn" id="btn-hub-depart" style="width: 100%; margin-top: auto; padding: 0.8rem; font-size: 1.6rem; border-color: var(--red-danger); color: var(--red-danger);">Depart</button>
             </div>
@@ -271,6 +275,96 @@
                 <!-- Injected via JS -->
             </div>
         </div>
+
+        <!-- ========================================== -->
+        <!-- Z-85 | VOLCANIC ARENA FULL SCREEN          -->
+        <!-- ========================================== -->
+        <div id="z85-arena" style="display: none; position: absolute; inset: 0; z-index: 85; background: var(--bg-void); flex-direction: column;">
+            
+            <div class="grimoire-header" style="justify-content: space-between; padding: 1rem 2rem; align-items: center; border-bottom: 2px solid #EF4444;">
+                <div style="display: flex; align-items: baseline; gap: 1rem;">
+                    <h1 style="margin: 0; color: #EF4444; font-size: 2.5rem; text-shadow: 0 0 10px rgba(239, 68, 68, 0.4);">The Volcanic Arena</h1>
+                    <span id="arena-tier-title" style="color: var(--text-main); font-size: 1.4rem;">Tier 1/10</span>
+                </div>
+                <button class="menu-btn" id="btn-exit-arena" style="margin: 0; width: auto; padding: 0.5rem 1.5rem; font-size: 1.5rem; border-color: var(--cyan-glow); color: var(--cyan-glow);">Return to Docks</button>
+            </div>
+            
+            <div class="grimoire-content" style="display: flex; flex-direction: column; overflow: hidden; padding: 1.5rem;">
+                
+                <!-- DRAFTING VIEW -->
+                <div id="arena-draft-view" style="display: flex; gap: 2rem; height: 100%; overflow: hidden;">
+                    <!-- Left: Player Roster & Opponent Info -->
+                    <div style="flex: 1.2; display: flex; flex-direction: column; gap: 1rem; overflow-y: auto; padding-right: 0.5rem;">
+                        <div style="background: rgba(239, 68, 68, 0.1); border: 1px solid #EF4444; padding: 1rem; border-radius: 6px;">
+                            <h3 style="margin: 0 0 0.5rem 0; color: #EF4444; font-size: 1.5rem;">Opponent: <span id="arena-opp-name" style="color: var(--text-main);">Name</span></h3>
+                            <p id="arena-opp-desc" style="margin: 0 0 0.5rem 0; color: var(--text-muted); font-style: italic; font-size: 1.1rem; line-height: 1.4;">"Dialogue here"</p>
+                            <div style="font-weight: bold; color: var(--gold-warn); font-size: 1.3rem; margin-top: 0.8rem;">Reward: <span id="arena-opp-reward">0g</span></div>
+                        </div>
+                        
+                        <h3 style="margin: 0; color: var(--text-main); font-size: 1.5rem; border-bottom: 1px solid var(--panel-border); padding-bottom: 0.5rem;">Your Squad</h3>
+                        <div id="arena-roster-slots" style="display: flex; flex-direction: column; gap: 0.8rem; flex: 1;">
+                            <!-- JS injects the 3 slots here -->
+                        </div>
+                        
+                        <button class="menu-btn" id="btn-arena-start-fight" style="width: 100%; padding: 1rem; font-size: 1.8rem; border-color: var(--green-safe); color: var(--green-safe); margin-top: auto;" disabled>Assign 3 Fish</button>
+                    </div>
+                    
+                    <!-- Right: Cargo Hold (Available Fighters) -->
+                    <div style="flex: 1; background: var(--panel-base); border: 2px solid var(--panel-border); border-radius: 8px; display: flex; flex-direction: column; overflow: hidden;">
+                        <div style="padding: 1rem; border-bottom: 2px solid var(--panel-border); background: var(--bg-void);">
+                            <h2 style="margin: 0; color: var(--cyan-glow); font-size: 1.6rem;">Available Fighters (Cargo)</h2>
+                        </div>
+                        <div id="arena-draft-cargo" style="flex: 1; padding: 1rem; overflow-y: auto; display: flex; flex-direction: column; gap: 0.5rem;">
+                            <!-- JS injects available fish here -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- COMBAT VIEW -->
+                <div id="arena-combat-view" style="display: none; flex-direction: column; height: 100%; overflow: hidden;">
+                    
+                    <!-- Top: Layout with Left Stats, Center Canvas, Right Stats -->
+                    <div class="arena-combat-layout">
+                        <!-- Left: Player Stats -->
+                        <div class="arena-combat-stats" id="arena-combat-player-stats">
+                            <!-- JS injects 3 live stat boxes -->
+                        </div>
+                        
+                        <!-- Center: Canvas -->
+                        <div class="arena-canvas-container">
+                            <canvas id="arena-main-canvas" width="640" height="360"></canvas>
+                            <div id="arena-combat-status" style="position: absolute; top: 10px; left: 50%; transform: translateX(-50%); font-size: 2.5rem; font-weight: bold; color: var(--cyan-glow); text-shadow: 0 0 15px rgba(34, 211, 238, 0.5); z-index: 10;">FIGHTING</div>
+                        </div>
+
+                        <!-- Right: Enemy Stats -->
+                        <div class="arena-combat-stats" id="arena-combat-enemy-stats">
+                            <!-- JS injects 3 live stat boxes -->
+                        </div>
+                    </div>
+
+                    <!-- Bottom: Log & Controls -->
+                    <div style="flex: 1; display: flex; flex-direction: column; gap: 1rem; margin-top: 1rem; min-height: 0;">
+                        <!-- FIX: Applied var(--font-crpg) and increased font size -->
+                        <div id="arena-main-log" style="flex: 1; background: #020617; border: 1px solid var(--panel-border); border-radius: 6px; padding: 1rem; overflow-y: auto; font-family: var(--font-crpg), monospace; font-size: 1.4rem; line-height: 1.4; color: var(--text-main);">
+                            <!-- Combat log entries -->
+                        </div>
+                        <div style="display: flex; gap: 1rem; align-items: center; justify-content: space-between;">
+                            <div style="display: flex; gap: 1rem; align-items: center;">
+                                <span style="color: var(--text-muted); font-size: 1.2rem; font-weight: bold;">Sim Speed:</span>
+                                <select id="arena-sim-speed" style="background: var(--bg-void); color: var(--cyan-glow); border: 1px solid var(--panel-border); padding: 0.5rem; font-size: 1.2rem; font-family: inherit; border-radius: 4px; cursor: pointer;">
+                                    <option value="1">1x (Normal)</option>
+                                    <option value="2">1.5x (Fast)</option>
+                                    <option value="5">3x (Turbo)</option>
+                                </select>
+                            </div>
+                            <button class="menu-btn" id="btn-arena-leave-fight" style="display: none; width: auto; padding: 0.5rem 2rem; font-size: 1.5rem; border-color: var(--cyan-glow); color: var(--cyan-glow); margin: 0;">Return to Drafting</button>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
 
 <!-- ========================================== -->
         <!-- Z-100 | THE GRIMOIRE (Pause Menu)          -->
