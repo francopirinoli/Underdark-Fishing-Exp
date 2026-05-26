@@ -228,7 +228,7 @@
                     <button class="hub-tab-btn" data-tab="boatwright">Boatwright</button>
                     <button class="hub-tab-btn" data-tab="tavern">Tavern</button>
                     <button class="hub-tab-btn" data-tab="safehouse" style="margin-top: 1rem; border-color: var(--gold-warn); color: var(--gold-warn);">Safehouse</button>
-                    
+
                     <!-- Myconid Colony Tabs (Hidden by default) -->
                     <button class="hub-tab-btn" data-tab="compost" style="display: none; border-color: #4ADE80; color: #4ADE80;">Loam Compost</button>
                     <button class="hub-tab-btn" data-tab="elders" style="display: none; border-color: #4ADE80; color: #4ADE80;">Colony Elders</button>
@@ -284,7 +284,9 @@
                 <div class="grim-tab" data-tab="character">Character</div>
                 <div class="grim-tab" data-tab="bestiary">Bestiary</div>
                 <div class="grim-tab" data-tab="quests">Quests</div>
-                <div class="grim-tab" data-tab="guide" style="color: var(--gold-warn);">Guide</div> <!-- NEW -->
+                <!-- NEW: Sagas Tab Button -->
+                <div class="grim-tab" data-tab="sagas" style="color: #A855F7;">Sagas</div>
+                <div class="grim-tab" data-tab="guide" style="color: var(--gold-warn);">Guide</div>
             </div>
             
             <div class="grimoire-content" id="grimoire-body">
@@ -539,6 +541,19 @@
                     </div>
                     <div id="grim-quests-empty" style="flex: 1; display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 1.8rem;">
                         No active quests. Check the Notice Board in a settlement.
+                    </div>
+                </div>
+
+                <!-- 9. SAGAS TAB (NEW) -->
+                <div id="grim-page-sagas" class="grim-page" style="display: none; gap: 2rem; height: 100%;">
+                    <!-- Left: Biome Questline Navigation List -->
+                    <div style="flex: 1; max-width: 250px; display: flex; flex-direction: column; gap: 0.5rem; overflow-y: auto; padding-right: 0.5rem;" id="grim-sagas-nav">
+                        <!-- Buttons injected dynamically via JS -->
+                    </div>
+                    
+                    <!-- Right: Dynamic Journal / Mythic Bestiary Plaque -->
+                    <div style="flex: 3; background: var(--bg-void); border: 2px solid var(--panel-border); border-radius: 8px; padding: 2rem; display: flex; flex-direction: column; overflow-y: auto; box-sizing: border-box; min-height: 0;" id="grim-sagas-content">
+                        <!-- Content injected dynamically via JS -->
                     </div>
                 </div>
 

@@ -156,7 +156,6 @@ initGameSystems();
     function startNewDescent(slot, identityData, stats, points, starterBoat) {
     currentSaveSlot = slot;
     
-    // --- FIX: Pass the boat into the player creation options ---
     player = PlayerEngine.createPlayer({ ...identityData, starterBoat });
     
     player.stats = stats;
@@ -168,21 +167,20 @@ initGameSystems();
     player.bestiary = {}; 
     player.vitals.hp = player.gear.boat.stats.maxHp;
 
-    // 1. GENERATE THE WORLD FIRST
-    world = generateGlobalMap(Date.now(),[]);
+    // 1. GENERATE THE WORLD
+    world = generateGlobalMap(Date.now(), []);
     
-// 2. NOW WE CAN CALL THE EVENT MANAGER (because world exists)
-    EventManager.onNewDay(1, world);
-    
-    let startNode = world.nodes.flat().find(n => n.hasSettlement) || world.nodes[world.startY][world.startX];
-    
-    globalX = startNode.x;
-    globalY = startNode.y;
+    // --- FIX: Map spawn coordinates directly to the generated starter settlement ---
+    globalX = world.startX;
+    globalY = world.startY;
     gameDay = 1;
-    gameTimeMinutes = 8 * 60;
+    gameTimeMinutes = 8 * 60; // Start at 08:00 AM
 
-    discoveredNodes =[`${globalX},${globalY}`];
+    discoveredNodes = [`${globalX},${globalY}`];
     world.nodes[globalY][globalX].isDiscovered = true;
+
+    // Initialize daily world events
+    EventManager.onNewDay(1, world);
 
     saveCurrentState();
     enterWorld();
@@ -1197,7 +1195,7 @@ function handleEndFishing(msg, type) {
 
     // --- LURE DURABILITY DEGRADATION & MYTHIC CONSUMPTION ---
     const lure = player.gear.lure;
-    if (lure && lure.maxDurability > 0) {
+    if (lure && (lure.maxDurability > 0 || lure.maxDurability === -1)) {
         
         let isMythicConsumed = false;
 
@@ -1211,14 +1209,14 @@ function handleEndFishing(msg, type) {
             // --- NEW: Prismatic Geode Hook Shatter ---
             else if (lure.id === 'lure_prismatic_geode_hook' && caughtId === 'geode_monarch') {
                 isMythicConsumed = true;
-                HUD.logAction(`The ${lure.name} shatters into brilliant crystal dust!`, "warn");
+                HUD.logAction(`The ${lure.name} shatters into beautiful crystal dust!`, "warn");
             }
         }
 
         if (isMythicConsumed) {
             lure.durability = 0; // Force it to break
         } else if (lure.durability !== -1 && lure.durability !== null) {
-            // Standard degradation (Bypass if -1)
+            // Standard degradation (Bypass if infinite / -1)
             if (FishingEngine.phase === 'SNAPPED') {
                 lure.durability -= 3;
             } else if (FishingEngine.phase === 'CAUGHT') {

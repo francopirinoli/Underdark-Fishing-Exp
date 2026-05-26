@@ -115,16 +115,18 @@ export const GrimoireUI = {
     },
 
     renderActiveTab() {
-        if (!this.gameState) return;
-        if (this.activeTab === 'map') this.renderMap();
-        else if (this.activeTab === 'character') this.renderCharacter();
-        else if (this.activeTab === 'cargo') this.renderCargo();     
-        else if (this.activeTab === 'tackle') this.renderTackle();   
-        else if (this.activeTab === 'loadout') this.renderLoadout();
-        else if (this.activeTab === 'bestiary') this.renderBestiary();
-        else if (this.activeTab === 'quests') this.renderQuests();
-        else if (this.activeTab === 'guide') this.renderGuide(); // <-- ADD THIS LINE
-    },
+            if (!this.gameState) return;
+            if (this.activeTab === 'map') this.renderMap();
+            else if (this.activeTab === 'character') this.renderCharacter();
+            else if (this.activeTab === 'cargo') this.renderCargo();     
+            else if (this.activeTab === 'tackle') this.renderTackle();   
+            else if (this.activeTab === 'loadout') this.renderLoadout();
+            else if (this.activeTab === 'bestiary') this.renderBestiary();
+            else if (this.activeTab === 'quests') this.renderQuests();
+            // --- NEW: Sagas Tab Routing ---
+            else if (this.activeTab === 'sagas') this.renderSagas(); 
+            else if (this.activeTab === 'guide') this.renderGuide(); 
+        },
 
     // --- MAP ---
     renderMap() {
@@ -1552,5 +1554,221 @@ renderBestiary() {
         // Inject the Right Content Pane
         const activeChapter = GUIDE_CHAPTERS.find(c => c.id === this.guideActiveChapterId) || GUIDE_CHAPTERS[0];
         contentContainer.innerHTML = activeChapter.content;
+    },
+
+    // ==========================================
+    // THE SAGAS & MYTHIC BESTIARY ENGINE
+    // ==========================================
+    renderSagas() {
+        if (!this.gameState) return;
+        const player = this.gameState.player;
+        const nav = document.getElementById('grim-sagas-nav');
+        const content = document.getElementById('grim-sagas-content');
+        
+        if (!nav || !content) return;
+        
+        // Default to Fungal on first open
+        if (!this.activeSagaId) this.activeSagaId = 'fungal';
+        
+        // --- 1. RENDER LEFT NAVIGATION PANEL ---
+        const sagas = [
+            { id: 'fungal', name: 'Rot Garden Saga', color: '#4ADE80', bossId: 'vesper_bloom_leviathan' },
+            { id: 'crystal', name: 'Grotto Archive Saga', color: '#38BDF8', bossId: 'geode_monarch' },
+            { id: 'frozen', name: 'Anglers Club Saga', color: '#60A5FA', bossId: 'glacial_leviathan' },
+            { id: 'volcanic', name: 'Magma Ring Saga', color: '#EF4444', bossId: 'ignis_gorged_serpentine' },
+            { id: 'abyssal', name: 'Void Rift Saga', color: '#A855F7', bossId: 'void_bound_aboleth' }
+        ];
+        
+        nav.innerHTML = '';
+        sagas.forEach(saga => {
+            const btn = document.createElement('button');
+            const isActive = this.activeSagaId === saga.id;
+            const isCaught = player.bestiary[saga.bossId] && player.bestiary[saga.bossId].caught > 0;
+            
+            btn.className = 'menu-btn';
+            btn.style.cssText = `
+                width: 100%; text-align: left; padding: 1rem; margin: 0; font-size: 1.2rem; border-radius: 4px;
+                border-color: ${isActive ? saga.color : 'var(--panel-border)'};
+                color: ${isActive ? saga.color : 'var(--text-muted)'};
+                background: ${isActive ? 'var(--panel-base)' : 'transparent'};
+                transition: all 0.15s;
+            `;
+            
+            btn.innerHTML = `
+                <div style="display:flex; justify-content:space-between; align-items:center; width:100%;">
+                    <span>${saga.name}</span>
+                    <span>${isCaught ? '🏆' : '📖'}</span>
+                </div>
+            `;
+            
+            btn.onclick = () => {
+                SFX.playUISelect();
+                this.activeSagaId = saga.id;
+                this.renderSagas();
+            };
+            nav.appendChild(btn);
+        });
+
+        // --- 2. RENDER RIGHT CONTENT PANEL ---
+        const activeSaga = sagas.find(s => s.id === this.activeSagaId);
+        const bossEntry = player.bestiary[activeSaga.bossId];
+        const isCaught = bossEntry && bossEntry.caught > 0;
+
+        content.innerHTML = '';
+
+        if (isCaught) {
+            // SCENARIO A: BOSS CAUGHT (Mythic Bestiary Plaque)
+            const boss = bossEntry.speciesData;
+            
+            let loreText = "";
+            let stamina = 300, speed = 50, weight = 1500;
+            
+            if (activeSaga.id === 'fungal') {
+                loreText = "A colossal, prehistoric creature of the fathomless mud. Centuries of dormant feeding beneath the loam of the Spore-Grown Colony allowed parasitic cordyceps to completely colonize its skeletal system, causing massive glowing shelf-mushrooms to grow directly out of its spine. It releases blinding, toxic spore clouds when threatened.";
+                stamina = 340; speed = 35; weight = 1500;
+            } else if (activeSaga.id === 'crystal') {
+                loreText = "A sovereign crustacean of terrifying proportions. Forged under extreme geothermal pressure in the deepest thermal crystal springs, this ancient king crab integrated high-purity amethyst and sapphire deposits directly into its shell. Its massive pincers can shear steel, and its carapace refracts light into blinding, prismatic laser beams.";
+                stamina = 300; speed = 65; weight = 550;
+            } else if (activeSaga.id === 'frozen') {
+                loreText = "A prehistoric apex predator locked in a block of deep-shelf black ice. Its body emits a biting cold aura capable of freezing sea lines.";
+                stamina = 360; speed = 50; weight = 2000;
+            } else if (activeSaga.id === 'volcanic') {
+                loreText = "A colossal magma-worm residing in boiling thermal vents, reinforced with cooled basalt plates and active magma veins.";
+                stamina = 350; speed = 45; weight = 2200;
+            } else if (activeSaga.id === 'abyssal') {
+                loreText = "A primordial, three-eyed cephalopod that swims through space-folding gravitational tears, warping the minds of those who gaze into its void.";
+                stamina = 380; speed = 55; weight = 2800;
+            }
+
+            content.innerHTML = `
+                <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%;">
+                    <div style="background: var(--bg-void); border: 2px solid ${activeSaga.color}; padding: 1.5rem; border-radius: 6px; display: flex; flex-direction: column; align-items: center; max-width: 580px; box-shadow: inset 0 0 30px ${activeSaga.color}25; position: relative;">
+                        
+                        <!-- High-res Image -->
+                        <img src="${boss.art.imageDataUrl}" style="width: 140px; height: 140px; object-fit: contain; image-rendering: pixelated; margin-bottom: 1rem; filter: drop-shadow(0 0 8px ${activeSaga.color}40);" />
+                        
+                        <h2 style="margin: 0; color: ${activeSaga.color}; font-size: 1.8rem; font-weight: bold; text-transform: uppercase; text-shadow: 0 0 10px ${activeSaga.color}20;">${boss.identity.name}</h2>
+                        <div style="color: var(--text-muted); font-size: 1rem; text-transform: uppercase; margin-top: 0.1rem; border-bottom: 1px solid var(--panel-border); width: 100%; text-align: center; padding-bottom: 0.5rem; letter-spacing: 0.1em;">MYTHIC ${boss.identity.family.toUpperCase()}</div>
+                        
+                        <!-- Combat Stats Grid -->
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; width: 100%; background: rgba(15, 23, 42, 0.5); padding: 0.8rem; border-radius: 4px; border: 1px solid var(--panel-border); margin: 1rem 0; font-size: 1rem;">
+                            <div style="display:flex; justify-content:space-between; padding-right: 0.5rem;"><span>Stamina:</span> <span style="font-weight:bold; color: var(--text-main);">${stamina} HP</span></div>
+                            <div style="display:flex; justify-content:space-between; padding-left: 0.5rem; border-left: 1px dashed var(--panel-border);"><span>Optimal Spot:</span> <span style="font-weight:bold; color: var(--cyan-glow);">${boss.combat.optimalReel}% Power</span></div>
+                            <div style="display:flex; justify-content:space-between; padding-right: 0.5rem;"><span>Speed:</span> <span style="font-weight:bold; color: var(--text-main);">${speed}</span></div>
+                            <div style="display:flex; justify-content:space-between; padding-left: 0.5rem; border-left: 1px dashed var(--panel-border);"><span>Average Weight:</span> <span style="font-weight:bold; color: var(--gold-warn);">${weight} kg</span></div>
+                        </div>
+
+                        <!-- Lore text -->
+                        <p style="margin: 0; color: var(--text-main); font-size: 1.05rem; line-height: 1.5; text-align: center; font-style: italic;">"${loreText}"</p>
+                        
+                        <div style="margin-top: 1.5rem; color: var(--green-safe); font-weight: bold; text-align: center; font-size: 0.95rem; letter-spacing: 0.1em; text-shadow: 0 0 5px rgba(34, 197, 94, 0.2);">
+                            ✓ CONQUERED & PRESERVED
+                        </div>
+                    </div>
+                </div>
+            `;
+        } else {
+            // SCENARIO B: BOSS NOT CAUGHT (Dynamic Quest Journal)
+            let journalHtml = "";
+
+            if (activeSaga.id === 'fungal') {
+                const prog = player.endgameProgress?.fungal;
+                const totalKg = prog ? Math.round(prog.totalCompostKg) : 0;
+                const hasHook = player.inventory.some(i => i.id === 'lure_mycelial_hook') || (player.gear.lure && player.gear.lure.id === 'lure_mycelial_hook');
+                
+                let instructions = "";
+                let targetKg = 5000;
+                let pct = Math.min(100, (totalKg / 5000) * 100);
+
+                if (hasHook) {
+                    instructions = `
+                        <h4 style="color:#A855F7; margin:0 0 0.5rem 0; font-size:1.2rem;">THE SUMMONING</h4>
+                        <p style="margin:0; line-height:1.4;">The Spore Tenders have gifted you <b>The Mycelial Hook</b>. Equip it to your active loadout and cast your line into the deep waters of the Spore-Grown Colony node. Be prepared—the Vesper-Bloom will fight with heavy, relentless mass.</p>
+                    `;
+                } else {
+                    instructions = `
+                        <h4 style="color:var(--gold-warn); margin:0 0 0.5rem 0; font-size:1.2rem;">ACTIVE MILESTONE</h4>
+                        <p style="margin:0 0 1rem 0; line-height:1.4;">The Myconid Loam Compost needs decaying biomass to expand. Deliver any caught fish from your Cargo Hold to the composting pile inside the <b>Spore-Grown Colony</b> node.</p>
+                        <div style="display:flex; justify-content:space-between; font-size: 1.1rem; margin-bottom: 0.3rem;">
+                            <span>Loam Progress:</span>
+                            <span style="color:#4ADE80; font-weight:bold;">${totalKg} / ${targetKg} kg</span>
+                        </div>
+                        <div class="progress-bar" style="margin-bottom:0.5rem;"><div class="progress-fill" style="width: ${pct}%; background: #4ADE80;"></div></div>
+                    `;
+                }
+
+                journalHtml = `
+                    <h3 style="margin:0 0 1rem 0; color:#4ADE80; font-size:1.8rem; border-bottom: 2px solid #4ADE80; padding-bottom:0.5rem;">Saga of the Rot Garden</h3>
+                    <p style="color:var(--text-main); font-size:1.15rem; line-height:1.5; font-style:italic; margin-bottom:1.5rem;">"The collective whispers of a giant, bloated entity sleeping deep inside the loam. It is said that only a hook carved of fossilized ancient mycelium can withstand its pressure..."</p>
+                    <div class="dashboard-group" style="border-color:#4ADE80; background:rgba(74, 222, 128, 0.05); padding:1.2rem;">
+                        ${instructions}
+                    </div>
+                `;
+            } else if (activeSaga.id === 'crystal') {
+                const prog = player.endgameProgress?.crystal;
+                const rating = prog ? prog.curatorRating : 0;
+                const filledTanks = prog ? Object.keys(prog.filledSlots).length : 0;
+                const hasHook = player.inventory.some(i => i.id === 'lure_prismatic_geode_hook') || (player.gear.lure && player.gear.lure.id === 'lure_prismatic_geode_hook');
+                
+                let instructions = "";
+                let targetRating = 10000;
+                let pct = Math.min(100, (rating / 10000) * 100);
+
+                if (hasHook) {
+                    instructions = `
+                        <h4 style="color:#A855F7; margin:0 0 0.5rem 0; font-size:1.2rem;">THE SUMMONING</h4>
+                        <p style="margin:0; line-height:1.4;">The Archive is funded. Curator Zephyr has granted you <b>The Prismatic Geode Hook</b>. Equip it and cast into the deep geode pools of the Crystal Museum. Prepare for rapid sweet-spot glides and blinding, light-shifting visual flares.</p>
+                    `;
+                } else {
+                    instructions = `
+                        <h4 style="color:var(--gold-warn); margin:0 0 0.5rem 0; font-size:1.2rem;">ACTIVE MILESTONE</h4>
+                        <p style="margin:0 0 1rem 0; line-height:1.4;">Curator Zephyr is cataloging the life-forms of the Grottos. Deliver specific specimens matching his geode tank requirements inside the <b>Crystal Museum</b> to earn Rating Points.</p>
+                        <div style="display:flex; justify-content:space-between; font-size: 1.1rem; margin-bottom: 0.3rem;">
+                            <span>Museum Rating:</span>
+                            <span style="color:#38BDF8; font-weight:bold;">${rating} / ${targetRating} pts</span>
+                        </div>
+                        <div class="progress-bar" style="margin-bottom:0.5rem;"><div class="progress-fill" style="width: ${pct}%; background: #38BDF8;"></div></div>
+                        <div style="color:var(--text-muted); font-size:0.95rem;">Tanks Filled: ${filledTanks} / 40</div>
+                    `;
+                }
+
+                journalHtml = `
+                    <h3 style="margin:0 0 1rem 0; color:#38BDF8; font-size:1.8rem; border-bottom: 2px solid #38BDF8; padding-bottom:0.5rem;">Saga of the Grotto Archive</h3>
+                    <p style="color:var(--text-main); font-size:1.15rem; line-height:1.5; font-style:italic; margin-bottom:1.5rem;">"Elven legends speak of the Geode Monarch, an ancient armored crab that feeds on pure amethyst geode aquifers. Only a hook made of high-refraction crystal can catch its eye..."</p>
+                    <div class="dashboard-group" style="border-color:#38BDF8; background:rgba(56, 189, 248, 0.05); padding:1.2rem;">
+                        ${instructions}
+                    </div>
+                `;
+            } else if (activeSaga.id === 'frozen') {
+                journalHtml = `
+                    <h3 style="margin:0 0 1rem 0; color:#60A5FA; font-size:1.8rem; border-bottom: 2px solid #60A5FA; padding-bottom:0.5rem;">Saga of the Frozen Fjord</h3>
+                    <p style="color:var(--text-main); font-size:1.15rem; line-height:1.5; font-style:italic; margin-bottom:1.5rem;">"The elite ice-lodge speaks of a leviathan locked inside an eternal block of black glacier ice. Only an S-Rank veteran of the Anglers Club will ever be worthy of carrying its key..."</p>
+                    <div class="dashboard-group" style="border-color:#60A5FA; background:rgba(96, 165, 250, 0.05); padding:1.2rem;">
+                        <h4 style="color:var(--text-muted); margin:0 0 0.5rem 0; font-size:1.2rem;">LOCKED CHAPTER</h4>
+                        <p style="margin:0; line-height:1.4;">The Anglers Club has not yet established its lodge. Climb the other biome questlines first, or explore deeper coordinates of the Frozen Fjord.</p>
+                    </div>
+                `;
+            } else if (activeSaga.id === 'volcanic') {
+                journalHtml = `
+                    <h3 style="margin:0 0 1rem 0; color:#EF4444; font-size:1.8rem; border-bottom: 2px solid #EF4444; padding-bottom:0.5rem;">Saga of the Magma Ring</h3>
+                    <p style="color:var(--text-main); font-size:1.15rem; line-height:1.5; font-style:italic; margin-bottom:1.5rem;">"The gladiators of the Sulphur Springs challenge any angler to pit their catch against theirs in the boiling arena. Winner of the ultimate tournament claims the unmelting magma hook..."</p>
+                    <div class="dashboard-group" style="border-color:#EF4444; background:rgba(239, 68, 68, 0.05); padding:1.2rem;">
+                        <h4 style="color:var(--text-muted); margin:0 0 0.5rem 0; font-size:1.2rem;">LOCKED CHAPTER</h4>
+                        <p style="margin:0; line-height:1.4;">The Aquatic Arena gates are locked. Continue exploring the Sulphur Springs and prepare your strongest fish for automated battles.</p>
+                    </div>
+                `;
+            } else if (activeSaga.id === 'abyssal') {
+                journalHtml = `
+                    <h3 style="margin:0 0 1rem 0; color:#A855F7; font-size:1.8rem; border-bottom: 2px solid #A855F7; padding-bottom:0.5rem;">Saga of the Void Rift</h3>
+                    <p style="color:var(--text-main); font-size:1.15rem; line-height:1.5; font-style:italic; margin-bottom:1.5rem;">"The Mage Tower stands silent. The Archmage studies the unstable dimensional tears. Only those who survive five gravitational vortexes and cross the Astral Sea may face the Aboleth..."</p>
+                    <div class="dashboard-group" style="border-color:#A855F7; background:rgba(168, 85, 247, 0.05); padding:1.2rem;">
+                        <h4 style="color:var(--text-muted); margin:0 0 0.5rem 0; font-size:1.2rem;">LOCKED CHAPTER</h4>
+                        <p style="margin:0; line-height:1.4;">The Archmage is not yet receiving visitors. Search for the Mage Tower in the deepest corners of the Abyssal Trench.</p>
+                    </div>
+                `;
+            }
+
+            content.innerHTML = journalHtml;
+        }
     }
 };

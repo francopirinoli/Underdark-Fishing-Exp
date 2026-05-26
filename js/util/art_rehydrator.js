@@ -153,9 +153,21 @@ export const ArtRehydrator = {
                 item.imageDataUrl = c.imageDataUrl;
             } 
             else if (item.invType === 'fish' || (item.identity && item.identity.family && !item.invType)) {
-                const f = generateFishData({ seed: safeSeed, family: item.identity.family });
+                let f;
+                // --- FIX: Check if this is an endgame boss before generating standard fish data ---
+                if (item.id === 'vesper_bloom_leviathan' || item.id === 'geode_monarch') {
+                    f = generateFishData({ bossId: item.id, seed: safeSeed });
+                } else {
+                    f = generateFishData({ seed: safeSeed, family: item.identity.family });
+                }
+                
                 if (!item.art) item.art = {};
                 item.art.imageDataUrl = f.art.imageDataUrl;
+                
+                // --- FIX: Preserve Phase-shifting URLs for Bosses across reloads ---
+                if (f.art.phaseUrls) {
+                    item.art.phaseUrls = f.art.phaseUrls;
+                }
             }
         } catch (e) {
             console.error(`Failed to rehydrate item: ${item.name}`, e);
