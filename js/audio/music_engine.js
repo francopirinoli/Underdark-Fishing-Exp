@@ -40,7 +40,13 @@ export const safeVel = (v) => Math.max(0.01, Math.min(1.0, Number(v.toFixed(3)))
 async function bakeSynth(Ctor, options, note, duration, triggerDur) {
     return await Tone.Offline(() => {
         const synth = new Ctor(options).toDestination();
-        synth.triggerAttackRelease(note, triggerDur, 0);
+        
+        // FIX: NoiseSynth does not take a 'note' argument, which was causing the null crash!
+        if (Ctor === Tone.NoiseSynth) {
+            synth.triggerAttackRelease(triggerDur, 0);
+        } else {
+            synth.triggerAttackRelease(note, triggerDur, 0);
+        }
     }, duration);
 }
 
@@ -49,30 +55,34 @@ export const MusicEngine = {
     parts: {},
     currentBiome: null,
     isInitialized: false,
-    activePlayId: 0, // --- NEW: Unique request token tracking ---
+    activePlayId: 0, 
+    _initPromise: null, // <-- NEW: Promise tracker
     
     echoDelay: null,
     longDelay: null,
     tapeChorus: null,
     warmFilter: null,
 
-    async init() {
-        if (!AudioEngine.isInitialized || this.isInitialized) return;
-        this.isInitialized = true;
+    init() {
+        if (!AudioEngine.isInitialized) return Promise.resolve();
+        if (this.isInitialized) return Promise.resolve();
         
-        console.log("🎹 Baking Dynamic Soundfonts sequentially...");
+        // --- FIX: If we are already initializing, wait for it to finish! ---
+        if (this._initPromise) return this._initPromise;
 
-        this.echoDelay = new Tone.FeedbackDelay("8n.", 0.4).connect(AudioEngine.musicReverb);
-        this.longDelay = new Tone.FeedbackDelay("2n", 0.6).connect(AudioEngine.musicReverb);
+        this._initPromise = (async () => {
+            console.log("🎹 Baking Dynamic Soundfonts sequentially...");
 
-        this.tapeChorus = new Tone.Chorus(4, 2.5, 0.5).start();
-        this.warmFilter = new Tone.Filter(2500, "lowpass", -12);
-        this.tapeChorus.connect(this.warmFilter);
-        this.warmFilter.connect(AudioEngine.musicReverb);
+            this.echoDelay = new Tone.FeedbackDelay("8n.", 0.4).connect(AudioEngine.musicReverb);
+            this.longDelay = new Tone.FeedbackDelay("2n", 0.6).connect(AudioEngine.musicReverb);
 
-        // --- PHASE 1: BAKE HEAVY SYNTHS TO RAM ---
-        // FIX: Await each bake sequentially to prevent exceeding the browser's 6 AudioContext limit!
-        try {
+            this.tapeChorus = new Tone.Chorus(4, 2.5, 0.5).start();
+            this.warmFilter = new Tone.Filter(2500, "lowpass", -12);
+            this.tapeChorus.connect(this.warmFilter);
+            this.warmFilter.connect(AudioEngine.musicReverb);
+
+            try {
+            // Existing Synths
             const bufChoir = await bakeSynth(Tone.Synth, { oscillator: { type: "fatcustom", partials: [1, 0.4, 0.1], spread: 30, count: 3 }, envelope: { attack: 2.5, decay: 1, sustain: 0.8, release: 0.8 } }, "C4", 12, 10);
             const bufStrings = await bakeSynth(Tone.Synth, { oscillator: { type: "sawtooth" }, envelope: { attack: 1.5, decay: 1, sustain: 0.5, release: 0.8 } }, "C4", 12, 10);
             const bufBass = await bakeSynth(Tone.MonoSynth, { oscillator: { type: "square" }, envelope: { attack: 0.5, decay: 2, sustain: 0.6, release: 1.0 }, filterEnvelope: { attack: 0.2, decay: 1, sustain: 0.4, release: 1.0, baseFrequency: 60, octaves: 3 } }, "C2", 12, 10);
@@ -83,7 +93,15 @@ export const MusicEngine = {
             const bufKick = await bakeSynth(Tone.MembraneSynth, { pitchDecay: 0.05, octaves: 2, oscillator: { type: "sine" }, envelope: { attack: 0.01, decay: 1.0, sustain: 0, release: 1 } }, "C1", 2, 1);
             const bufToms = await bakeSynth(Tone.MembraneSynth, { pitchDecay: 0.1, octaves: 4, oscillator: { type: "square" }, envelope: { attack: 0.01, decay: 0.2, sustain: 0, release: 0.1 } }, "C2", 1, 0.5);
 
+            // --- NEW: ROCK/METAL SYNTHS ---
+            const bufGuitar = await bakeSynth(Tone.FMSynth, { harmonicity: 0.5, modulationIndex: 10, oscillator: { type: "sawtooth" }, envelope: { attack: 0.01, decay: 0.3, sustain: 0.1, release: 0.2 }, modulation: { type: "square" } }, "E2", 3, 1);
+            const bufMetalSnare = await bakeSynth(Tone.NoiseSynth, { noise: { type: "white" }, envelope: { attack: 0.001, decay: 0.25, sustain: 0, release: 0.1 } }, "C4", 2, 1);
+            const bufMetalKick = await bakeSynth(Tone.MembraneSynth, { pitchDecay: 0.01, octaves: 6, oscillator: { type: "square" }, envelope: { attack: 0.001, decay: 0.2, sustain: 0, release: 0.1 } }, "C1", 2, 1);
+            const bufMetalBass = await bakeSynth(Tone.FMSynth, { harmonicity: 1, modulationIndex: 3, oscillator: { type: "square" }, envelope: { attack: 0.01, decay: 0.4, sustain: 0.4, release: 0.2 }, modulation: { type: "triangle" } }, "E1", 4, 2);
+            const bufLeadShred = await bakeSynth(Tone.FMSynth, { harmonicity: 2.0, modulationIndex: 5, oscillator: { type: "sawtooth" }, envelope: { attack: 0.05, decay: 0.2, sustain: 0.8, release: 0.5 }, modulation: { type: "sine" } }, "E4", 4, 2);
+
             const vibrato = new Tone.Vibrato(4, 0.05).connect(this.echoDelay);
+            const shredVibrato = new Tone.Vibrato(6, 0.2).connect(this.echoDelay); // Fast vibrato for solos
 
             // --- PHASE 2: MOUNT SAMPLERS ---
             this.synths.padChoir = new Tone.Sampler({ urls: { "C4": bufChoir }, release: 0.8 }).connect(this.tapeChorus);
@@ -113,7 +131,23 @@ export const MusicEngine = {
             this.synths.percToms = new Tone.Sampler({ urls: { "C2": bufToms }, release: 0.2 }).connect(this.echoDelay);
             this.synths.percToms.volume.value = -12;
 
-            // Noise Tape remains live (Cheap)
+            // --- MOUNT METAL SYNTHS ---
+            this.synths.guitarChug = new Tone.Sampler({ urls: { "E2": bufGuitar }, release: 0.1 }).connect(this.warmFilter);
+            this.synths.guitarChug.volume.value = -8;
+
+            this.synths.metalSnare = new Tone.Sampler({ urls: { "C4": bufMetalSnare }, release: 0.2 }).connect(this.echoDelay);
+            this.synths.metalSnare.volume.value = -10;
+
+            this.synths.metalKick = new Tone.Sampler({ urls: { "C1": bufMetalKick }, release: 0.1 }).connect(this.warmFilter);
+            this.synths.metalKick.volume.value = -4;
+
+            this.synths.metalBass = new Tone.Sampler({ urls: { "E1": bufMetalBass }, release: 0.2 }).connect(this.warmFilter);
+            this.synths.metalBass.volume.value = -6;
+
+            this.synths.leadShred = new Tone.Sampler({ urls: { "E4": bufLeadShred }, release: 0.4 }).connect(shredVibrato);
+            this.synths.leadShred.volume.value = -10;
+
+            // Noise Tape remains live
             this.synths.noiseTape = new Tone.NoiseSynth({
                 noise: { type: "brown" },
                 envelope: { attack: 2, decay: 0, sustain: 1, release: 2 }
@@ -121,10 +155,16 @@ export const MusicEngine = {
             this.synths.noiseTape.volume.value = -40; 
 
             console.log("🎹 Sampler Rack Online. CPU Saved!");
-
+            this.isInitialized = true;
         } catch (error) {
             console.error("❌ Audio Baker Failed! Ensure Tone.js is loaded properly.", error);
         }
+            
+            // Release the promise lock
+            this._initPromise = null;
+        })();
+        
+        return this._initPromise;
     },
 
     clearTracks() {
@@ -136,10 +176,11 @@ export const MusicEngine = {
         this.parts = {};
         
         Object.values(this.synths).forEach(synth => {
+            // --- FIX: Force an immediate release of all ringing notes ---
             if (synth.releaseAll) {
-                try { synth.releaseAll(); } catch(e){}
+                try { synth.releaseAll(Tone.now()); } catch(e){}
             } else if (synth.triggerRelease) {
-                try { synth.triggerRelease(); } catch(e){}
+                try { synth.triggerRelease(Tone.now()); } catch(e){} 
             }
         });
         

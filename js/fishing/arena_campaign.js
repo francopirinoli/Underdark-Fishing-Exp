@@ -5,6 +5,7 @@
  */
 
 import { generateFishData, generateFishInstance } from '../data/fish_data_generator.js';
+import { generateName } from '../data/npc_data_generator.js'; // <-- NEW IMPORT
 import { createRng } from '../util/rng.js';
 
 // Helper to force a specific fish generation
@@ -174,19 +175,37 @@ export const ArenaCampaign = {
         if (playerHighestRating > 800) targetRarity = 'Legendary';
         else if (playerHighestRating < 200) targetRarity = 'Uncommon';
 
-        const team = [];
-        for (let i = 0; i < 3; i++) {
-            team.push(createForcedFish(rng, rng.pick(families), targetRarity, rng.pick(sizes), rng.int(0, 20)));
-        }
+        // --- NEW: Generate a proper NPC Name and Gladiator Title ---
+        const race = rng.pick(['Human', 'Orc', 'Elf', 'Dwarf', 'Tiefling']);
+        const gender = rng.pick(['Male', 'Female']);
+        const npcName = generateName(race, gender, rng);
+        
+        const titleAdjs = ['The Iron', 'The Abyssal', 'The Swift', 'The Savage', 'The Relentless', 'The Crimson', 'The Void', 'The Golden', 'The Unbroken', 'The Toxic'];
+        const titleNouns = ['Hook', 'Angler', 'Tide', 'Reef-Breaker', 'Leviathan', 'Champion', 'Shadow', 'Tamer', 'Harpoon', 'Current'];
+        const gladiatorTitle = `${rng.pick(titleAdjs)} ${rng.pick(titleNouns)}`;
+
+        const dialogOptions = [
+            "The arena never sleeps. Defend your rank!",
+            "I've crawled from the deeps to claim your title.",
+            "Let's see if your squad is as tough as they say.",
+            "Words are wind. Let the fish do the talking.",
+            "You face a true master of the darklake today."
+        ];
 
         return {
-            name: `Challenger ${rng.int(1000, 9999)}`,
-            race: rng.pick(['Human', 'Orc', 'Elf', 'Dwarf', 'Tiefling']),
-            gender: rng.pick(['Male', 'Female']),
-            title: "Endless Competitor",
-            dialogue: "The arena never sleeps. Defend your rank!",
+            name: npcName,
+            race: race,
+            gender: gender,
+            title: gladiatorTitle,
+            dialogue: rng.pick(dialogOptions),
             rewardGold: rng.int(1500, 4000),
-            team: team
+            generateTeam: () => {
+                const team = [];
+                for (let i = 0; i < 3; i++) {
+                    team.push(createForcedFish(createRng(rng.next() * 100000), rng.pick(families), targetRarity, rng.pick(sizes), rng.int(0, 20)));
+                }
+                return team;
+            }
         };
     }
 };

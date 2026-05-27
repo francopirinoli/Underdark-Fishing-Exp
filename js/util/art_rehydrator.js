@@ -155,7 +155,15 @@ export const ArtRehydrator = {
             else if (item.invType === 'fish' || (item.identity && item.identity.family && !item.invType)) {
                 let f;
                 // --- FIX: Check if this is an endgame boss before generating standard fish data ---
-                if (item.id === 'vesper_bloom_leviathan' || item.id === 'geode_monarch') {
+                const bossIds = [
+                    'vesper_bloom_leviathan', 
+                    'geode_monarch', 
+                    'ignis_gorged_serpentine', 
+                    'glacial_leviathan', 
+                    'void_bound_aboleth'
+                ];
+                
+                if (bossIds.includes(item.id)) {
                     f = generateFishData({ bossId: item.id, seed: safeSeed });
                 } else {
                     f = generateFishData({ seed: safeSeed, family: item.identity.family });

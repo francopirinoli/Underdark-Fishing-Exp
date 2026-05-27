@@ -219,6 +219,32 @@ export const HUD = {
         ctx.fill();
     },
 
+    updateLocation(node, biome) {
+        const locPanel = document.getElementById('z10-location');
+        if (!locPanel) return;
+
+        const nameEl = document.getElementById('loc-name');
+        const biomeEl = document.getElementById('loc-biome');
+        
+        nameEl.innerText = node.name;
+        
+        // Color code the name based on the active biome
+        const bColor = biome.textColor || biome.globalColor;
+        nameEl.style.color = bColor;
+        
+        // Build the subtitle, appending Settlement info if present
+        let subText = biome.name;
+        if (node.hasSettlement) subText += ` • ⚓ ${node.settlementName}`;
+        
+        biomeEl.innerText = subText;
+        locPanel.style.borderColor = bColor;
+    },
+
+    toggleLocation(show) {
+        const locPanel = document.getElementById('z10-location');
+        if (locPanel) locPanel.style.display = show ? 'flex' : 'none';
+    },
+
     logAction(msg, type = "normal") {
         const logBox = document.getElementById('hud-log');
         const div = document.createElement('div');

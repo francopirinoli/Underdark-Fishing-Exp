@@ -250,19 +250,20 @@ export function generateGlobalMap(seed = Date.now(), discoveredNodes = []) {
 }
 
 // --- HELPER: PROCEDURAL NAMING ---
+// --- HELPER: PROCEDURAL NAMING ---
 function generateLakeName(biomeId, rng) {
     const biomePrefixes = {
-        fungal: ['Spore', 'Rot', 'Myconid', 'Glow-Cap', 'Lichen', 'Moss', 'Muck'],
-        crystal: ['Glimmer', 'Prism', 'Opal', 'Shard', 'Glass', 'Sapphire', 'Diamond'],
-        abyssal: ['Shadow', 'Void', 'Hollow', 'Stygian', 'Sunken', 'Deep', 'Pitch'],
-        volcanic: ['Sulphur', 'Magma', 'Ember', 'Scorch', 'Pyre', 'Ash', 'Smoke'],
-        frozen: ['Frost', 'Rime', 'Glacier', 'Ice', 'Pale', 'Hoar', 'Chill']
+        fungal: ['Spore', 'Rot', 'Myconid', 'Glow-Cap', 'Lichen', 'Moss', 'Muck', 'Blight', 'Slime', 'Loam', 'Mold', 'Toadstool', 'Decay', 'Mush'],
+        crystal: ['Glimmer', 'Prism', 'Opal', 'Shard', 'Glass', 'Sapphire', 'Diamond', 'Geode', 'Quartz', 'Ruby', 'Emerald', 'Spark', 'Clear', 'Glassy', 'Gleam'],
+        abyssal: ['Shadow', 'Void', 'Hollow', 'Stygian', 'Sunken', 'Deep', 'Pitch', 'Abyss', 'Dark', 'Blind', 'Gloom', 'Night', 'Murk', 'Fathom', 'Trench', 'Silent'],
+        volcanic: ['Sulphur', 'Magma', 'Ember', 'Scorch', 'Pyre', 'Ash', 'Smoke', 'Lava', 'Flame', 'Cinder', 'Ignis', 'Char', 'Boiling', 'Molten', 'Slag'],
+        frozen: ['Frost', 'Rime', 'Glacier', 'Ice', 'Pale', 'Hoar', 'Chill', 'Snow', 'Shiver', 'Biting', 'Arctic', 'Crystal-Ice', 'Numb', 'Winter', 'Polar']
     };
     
-    const nouns = ['Basin', 'Grotto', 'Reach', 'Shoals', 'Cavern', 'Pool', 'Mere', 'Sink', 'Flow', 'Lagoon', 'Trough', 'Reef', 'Waters', 'Sound', 'Delve'];
-    const suffixes = ['of the Deep', 'of Shadows', 'of Echoes', 'of the Lost', 'of Glowing Stones', 'of the Blind King', 'of Sorrow', 'of the Forgotten'];
+    const nouns = ['Basin', 'Grotto', 'Reach', 'Shoals', 'Cavern', 'Pool', 'Mere', 'Sink', 'Flow', 'Lagoon', 'Trough', 'Reef', 'Waters', 'Sound', 'Delve', 'Trench', 'Lake', 'Pond', 'Depths', 'Drop', 'Well', 'Spring'];
+    const suffixes = ['of the Deep', 'of Shadows', 'of Echoes', 'of the Lost', 'of Glowing Stones', 'of the Blind King', 'of Sorrow', 'of the Forgotten', 'of Whispers', 'of the Ancients', 'of Despair', 'of Silence', 'of the Leviathan'];
 
-    const prefix = rng.pick(biomePrefixes[biomeId]);
+    const prefix = rng.pick(biomePrefixes[biomeId] || biomePrefixes.abyssal);
     const noun = rng.pick(nouns);
 
     const formatRoll = rng.next();

@@ -25,6 +25,7 @@ import { generateMythicLure } from '../art/mythic_lure_generator.js'; // <-- ADD
 import { ArenaCampaign } from '../fishing/arena_campaign.js';
 import { ArenaEngine } from '../fishing/arena_engine.js';
 import { ArenaRenderer } from '../fishing/arena_renderer.js';
+import { MusicEngine } from '../audio/music_engine.js'; 
 
 export const HubUI = {
     gameState: null,
@@ -163,6 +164,11 @@ export const HubUI = {
         if (this.arenaEngine) ArenaRenderer.stop();
         this.arenaEngine = null;
         
+        // --- FIX: Guarantee we revert to Hub Music if we were in Battle ---
+        if (MusicEngine.currentBiome === 'battle') {
+            MusicEngine.playBiome('hub', createRng(Date.now()));
+        }
+
         // Return active hub tab focus visually back to whatever it was behind the arena
         this.renderActiveTab(); 
     },
@@ -2630,6 +2636,9 @@ export const HubUI = {
         
         const logBox = document.getElementById('arena-main-log');
         logBox.innerHTML = '';
+        
+        // --- NEW: START BATTLE MUSIC ---
+        MusicEngine.playBiome('battle', createRng(Date.now()));
         
         const statusHeader = document.getElementById('arena-combat-status');
         statusHeader.innerText = 'FIGHTING';

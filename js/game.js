@@ -236,6 +236,8 @@ function enterWorld() {
     loadLocalNode(null);
     HUD.logAction("Descended into the Darklake.");
     
+    HUD.toggleLocation(true); // <-- NEW
+
     currentState = STATE.EXPLORATION;
     lastTime = performance.now();
     requestAnimationFrame(gameLoop);
@@ -279,6 +281,9 @@ function loadLocalNode(entryDir) {
 
     // Generate the Local Ecosystem using the global helper
     currentLocalFishPool = getFishPoolForNode(world.seed, globalX, globalY, currentBiome.id);
+
+    // --- NEW: Update Top-Left Location HUD ---
+    HUD.updateLocation(targetNode, currentBiome);
 
     let spawnX = LOCAL_MAP_SIZE / 2, spawnY = LOCAL_MAP_SIZE / 2;
     const EDGE_OFFSET = 15;
@@ -568,6 +573,7 @@ function enterTournament(npcBoat) {
 function enterHub() {
     currentState = STATE.HUB;
     document.getElementById('interact-prompt').style.display = 'none';
+    HUD.toggleLocation(false); 
     ExplorationEngine.velocity = 0; 
     keys.forward = keys.backward = keys.left = keys.right = false; 
     
@@ -580,9 +586,9 @@ function enterHub() {
     HubUI.open({ player, world, globalX, globalY, gameDay }, targetNode);
     saveCurrentState(); 
 }
-
 function resumeFromHub() {
     currentState = STATE.EXPLORATION;
+    HUD.toggleLocation(true);
     const effStats = PlayerEngine.getEffectiveStats(player); 
     if (player.vitals.hp <= 0) player.vitals.hp = effStats.exploration.maxHp; 
     
@@ -824,7 +830,13 @@ function gameLoop(timestamp) {
                     player.bestiary[caughtFish.id].caught++;
 
                     const baseKnowledge = { 'Common': 10, 'Uncommon': 20, 'Rare': 40, 'Legendary': 70, 'Boss': 100 }[caughtFish.identity.rarity] || 10;
-                    const knowledgeXpGain = Math.round(baseKnowledge * effStats.economy.knowledgeXpMult);
+                    let knowledgeXpGain = Math.round(baseKnowledge * effStats.economy.knowledgeXpMult);
+                    
+                    // --- FIX: Bosses automatically grant Max Knowledge (Lv.3) upon capture ---
+                    if (caughtFish.identity.rarity === 'Boss') {
+                        knowledgeXpGain = 250; // Jumps straight to 250+ XP
+                    }
+                    
                     player.bestiary[caughtFish.id].xp += knowledgeXpGain;
                     
                     const newKnowledge = player.bestiary[caughtFish.id].xp;
@@ -931,6 +943,9 @@ function handleAttemptCast() {
             if (targetNode.poi === 'myconid_colony' && equippedLure && equippedLure.id === 'lure_mycelial_hook') {
                 HUD.logAction("The Mycelial Hook pulses. The deep loam begins to tremble...", "warn");
                 
+                // --- NEW: START BATTLE MUSIC ---
+                MusicEngine.playBiome('battle', createRng(Date.now()));
+                
                 const bossData = generateFishData({ bossId: 'vesper_bloom_leviathan', seed: Date.now() });
                 const bossInstance = generateFishInstance(bossData, createRng(Date.now()));
                 
@@ -954,7 +969,7 @@ function handleAttemptCast() {
             // --- NEW: CRYSTAL MUSEUM SUMMONING BYPASS ---
             else if (targetNode.poi === 'crystal_museum' && equippedLure && equippedLure.id === 'lure_prismatic_geode_hook') {
                 HUD.logAction("The Prismatic Geode Hook flares. A brilliant rainbow refracts through the cavern...", "warn");
-                
+                MusicEngine.playBiome('battle', createRng(Date.now()));
                 const bossData = generateFishData({ bossId: 'geode_monarch', seed: Date.now() });
                 const bossInstance = generateFishInstance(bossData, createRng(Date.now()));
                 
@@ -978,7 +993,7 @@ function handleAttemptCast() {
             // --- NEW: VOLCANIC ARENA SUMMONING BYPASS ---
             else if (targetNode.poi === 'volcanic_arena' && equippedLure && equippedLure.id === 'lure_brimstone_hook') {
                 HUD.logAction("The Brimstone Hook boils the water. A massive shadow rises from the caldera...", "warn");
-                
+                MusicEngine.playBiome('battle', createRng(Date.now()));
                 const bossData = generateFishData({ bossId: 'ignis_gorged_serpentine', seed: Date.now() });
                 const bossInstance = generateFishInstance(bossData, createRng(Date.now()));
                 
@@ -1256,11 +1271,12 @@ function handleEndFishing(msg, type) {
 
     // --- LURE DURABILITY DEGRADATION & MYTHIC CONSUMPTION ---
     const lure = player.gear.lure;
-    if (lure && (lure.maxDurability > 0 || lure.maxDurability === -1)) {
+    if (lure && (lure.maxDurability > 0 || lure.maxDurability === -1 || lure.maxDurability === null)) {
         
         let isMythicConsumed = false;
+        const isMythic = (lure.maxDurability === -1 || lure.maxDurability === null);
 
-// Check if we successfully caught a Boss with its respective Mythic Lure
+        // Check if we successfully caught a Boss with its respective Mythic Lure
         if (FishingEngine.phase === 'CAUGHT' && FishingEngine.fishData && FishingEngine.fishData.identity.rarity === 'Boss') {
             const caughtId = FishingEngine.fishData.id;
             if (lure.id === 'lure_mycelial_hook' && caughtId === 'vesper_bloom_leviathan') {
@@ -1271,26 +1287,32 @@ function handleEndFishing(msg, type) {
                 isMythicConsumed = true;
                 HUD.logAction(`The ${lure.name} shatters into beautiful crystal dust!`, "warn");
             }
-            // --- NEW: Brimstone Hook Shatter ---
             else if (lure.id === 'lure_brimstone_hook' && caughtId === 'ignis_gorged_serpentine') {
                 isMythicConsumed = true;
                 HUD.logAction(`The ${lure.name} melts into useless slag!`, "warn");
             }
         }
 
-        if (isMythicConsumed) {
-            lure.durability = 0; // Force it to break
-        } else if (lure.durability !== -1 && lure.durability !== null) {
-            // Standard degradation (Bypass if infinite / -1)
+        let shouldBreak = false;
+
+        // --- FIX: Safely protect Mythic Lures from standard degradation ---
+        if (isMythic) {
+            if (isMythicConsumed) shouldBreak = true;
+        } else {
+            // Standard degradation
             if (FishingEngine.phase === 'SNAPPED') {
                 lure.durability -= 3;
             } else if (FishingEngine.phase === 'CAUGHT') {
                 lure.durability -= 1;
             }
+            
+            if (lure.durability <= 0) {
+                shouldBreak = true;
+                HUD.logAction(`Your ${lure.name} broke!`, "danger");
+            }
         }
         
-        if (lure.durability <= 0) {
-            if (!isMythicConsumed) HUD.logAction(`Your ${lure.name} broke!`, "danger");
+        if (shouldBreak) {
             SFX.playLineSnap();
             player.gear.lure = {
                 name: 'Bare Hook',
@@ -1300,6 +1322,12 @@ function handleEndFishing(msg, type) {
             };
         }
     }
+    
+    // --- NEW: Restore standard Biome Music if we were in a Boss Fight ---
+    if (MusicEngine.currentBiome === 'battle') {
+        const targetNode = world.nodes[globalY][globalX];
+        MusicEngine.playBiome(BIOMES[targetNode.biomeId].id, createRng(world.seed + globalX + globalY));
+    }
 }
 
 function handleDeath() {
@@ -1308,6 +1336,7 @@ function handleDeath() {
     
     // Stop updates and movement immediately
     currentState = STATE.MENU; 
+    HUD.toggleLocation(false); 
     ExplorationEngine.velocity = 0;
     keys.forward = keys.backward = keys.left = keys.right = false;
     mouse.isCharging = false;

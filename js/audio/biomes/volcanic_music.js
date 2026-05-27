@@ -1,178 +1,132 @@
 /**
  * js/audio/biomes/volcanic_music.js
- * Sulphur Springs (Volcanic)
- * Vibe: Aggressive, fiery, driving, hostile, tribal.
- * Instruments: War drums, Galloping Bass, Brassy Pads, Sweeping Arpeggios.
+ * Sulphur Springs (Volcanic) - REMAKE
+ * Vibe: Oppressive heat, tribal, offbeat, exotic desert dungeon synth.
+ * Instruments: Deep resonating toms, exotic lute trills, bending pads.
  */
 
 export function compose(engine, rng, theory) {
     const { getNoteInScale, SCALES, safeVel } = theory;
 
-    // Fast, urgent tempo
-    Tone.Transport.bpm.value = rng.int(105, 120); 
+    // Slow, oppressive tempo
+    Tone.Transport.bpm.value = rng.int(65, 80); 
     const root = rng.int(0, 11); 
     
-    // Expanded scales for more variance
-    const scale = rng.pick([SCALES.harmonic_minor, SCALES.phrygian_dominant, SCALES.double_harmonic, SCALES.minor]); 
+    // Exotic, "desert" sounding scales
+    const scale = rng.pick([SCALES.double_harmonic, SCALES.phrygian_dominant, SCALES.locrian]); 
 
-    engine.synths.noiseTape.volume.value = -22; 
-    const padSynth = rng.pick(['padBrass', 'padStrings']);
-    const leadSynth = 'leadOboe'; 
+    // Heavy, bubbling heat noise
+    engine.synths.noiseTape.volume.value = -20; 
+    const padSynth = rng.pick(['padChoir', 'padStrings']);
+    const leadSynth = rng.pick(['leadOboe', 'leadFlute']); 
 
-    // --- 1. AGGRESSIVE CHORDS (8 Measure Loop) ---
-    // Expanded chord dictionaries
+    // --- 1. SLUDGY, DISSONANT CHORDS (8 Measure Loop) ---
     const chordProgressions = [
-        [0, 5, 4, 0], // i, VI, V, i 
-        [0, 1, 4, 5], // i, II, V, VI 
-        [0, 3, 7, 4], // i, iv, VII, V
-        [0, 7, 6, 5], // Descending tension
-        [0, 2, 5, 4]  // i, III, VI, V
+        [0, 1, 0, 1], // Wavering half-steps (mirage heat effect)
+        [0, 4, 3, 0], // Exotic minor shift
+        [0, 0, 2, 1], // Crawling tension
+        [0, 7, 0, 7]  // Deep fifths, very sparse
     ];
     const prog = rng.pick(chordProgressions);
     
-    const padEvents =[]; 
-    const bassEvents =[];
+    const padEvents = []; 
+    const bassEvents = [];
 
     for (let i = 0; i < 4; i++) {
-        // Stretch chords across 2 measures for a grander feel
         const time = `${i * 2}:0:0`; 
         const deg = prog[i];
         
-        const voicing = [deg, deg + 4]; 
-        if (rng.chance(0.6)) voicing.push(deg + rng.pick([2, 3])); // Add minor/major 3rd
+        // Sweeping, dissonant chords
+        const voicing = [deg, deg + 3, deg + 4]; 
         
         padEvents.push({ 
             time, 
             note: voicing.map(d => getNoteInScale(root, 3, scale, d)), 
             duration: "2m", 
-            velocity: safeVel(rng.float(0.5, 0.7)) 
+            velocity: safeVel(rng.float(0.4, 0.6)) 
         });
         
-        // Dynamic Galloping Bassline
-        const bNote1 = getNoteInScale(root, 2, scale, deg);
-        const bNote2 = getNoteInScale(root, 2, scale, deg + rng.pick([0, 4, 7])); 
-        
-        for (let mOffset = 0; mOffset < 2; mOffset++) {
-            const m = (i * 2) + mOffset;
-            for (let beat = 0; beat < 4; beat++) {
-                bassEvents.push({ time: `${m}:${beat}:0`, note: bNote1, duration: "8n", velocity: safeVel(0.9) });
-                // Groove variance: Don't hammer every single 16th note
-                if (rng.chance(0.6)) {
-                    bassEvents.push({ time: `${m}:${beat}:2`, note: rng.chance(0.7) ? bNote1 : bNote2, duration: "16n", velocity: safeVel(0.7) });
-                }
-            }
+        // Bass hits hard on the 1, then rings out
+        bassEvents.push({ time, note: getNoteInScale(root, 2, scale, deg), duration: "1m", velocity: safeVel(0.9) });
+        // Occasional off-beat bass drop
+        if (rng.chance(0.4)) {
+            bassEvents.push({ time: `${i * 2}:3:2`, note: getNoteInScale(root, 1, scale, deg), duration: "4n", velocity: safeVel(0.8) });
         }
     }
     
     engine.scheduleTrack('pad', padSynth, padEvents, "8m");
     engine.scheduleTrack('bass', 'bassDrone', bassEvents, "8m");
 
-    // --- 2. TRIBAL WAR DRUMS (2 Measure Loop) ---
+    // --- 2. TRIBAL SYNCOPATED PERCUSSION (2 Measure Loop) ---
+    // We use a 3-3-2 (Tresillo) rhythm to give it an offbeat, limping tribal feel
     const kickEvents = [];
-    const percEvents =[];
+    const percEvents = [];
     
     for (let m = 0; m < 2; m++) {
-        kickEvents.push({ time: `${m}:0:0`, note: "C1", duration: "8n", velocity: safeVel(1.0) });
-        kickEvents.push({ time: `${m}:1:2`, note: "C1", duration: "8n", velocity: safeVel(0.8) }); 
-        kickEvents.push({ time: `${m}:2:0`, note: "C1", duration: "8n", velocity: safeVel(1.0) });
+        // Kick on the 1, the "and" of 2, and the 4
+        kickEvents.push({ time: `${m}:0:0`, note: "C1", duration: "8n", velocity: safeVel(0.9) });
+        kickEvents.push({ time: `${m}:1:2`, note: "C1", duration: "8n", velocity: safeVel(0.7) });
+        kickEvents.push({ time: `${m}:3:0`, note: "C1", duration: "8n", velocity: safeVel(0.8) });
         
-        if (rng.chance(0.6)) kickEvents.push({ time: `${m}:3:2`, note: "C1", duration: "8n", velocity: safeVel(0.8) });
-
-        percEvents.push({ time: `${m}:1:0`, note: "G2", duration: "16n", velocity: safeVel(0.6) });
-        percEvents.push({ time: `${m}:2:2`, note: "C3", duration: "16n", velocity: safeVel(0.5) });
-        percEvents.push({ time: `${m}:3:0`, note: "D2", duration: "16n", velocity: safeVel(0.6) });
-        
-        if (m === 1 && rng.chance(0.8)) {
-            percEvents.push({ time: `${m}:3:1`, note: "G2", duration: "16n", velocity: safeVel(0.4) });
-            percEvents.push({ time: `${m}:3:2`, note: "C3", duration: "16n", velocity: safeVel(0.5) });
-            percEvents.push({ time: `${m}:3:3`, note: "D3", duration: "16n", velocity: safeVel(0.6) });
-        }
+        // Toms fill in the tribal polyrhythms
+        percEvents.push({ time: `${m}:0:2`, note: "G2", duration: "16n", velocity: safeVel(0.5) });
+        percEvents.push({ time: `${m}:2:0`, note: "D2", duration: "16n", velocity: safeVel(0.7) });
+        percEvents.push({ time: `${m}:2:2`, note: "C3", duration: "16n", velocity: safeVel(0.4) });
+        percEvents.push({ time: `${m}:3:2`, note: "G2", duration: "16n", velocity: safeVel(0.6) });
     }
     engine.scheduleTrack('kick', 'kickCavern', kickEvents, "2m");
     engine.scheduleTrack('perc', 'percToms', percEvents, "2m");
 
-    // --- 3. MAGMA BURST ARPEGGIOS (4 Measure Loop) ---
-    // Drastically optimized. Generates sweeping runs instead of a relentless 16th-note wall.
-    const arpEvents =[];
-    for (let m = 0; m < 4; m++) {
-        const bursts = rng.int(1, 2); // 1 or 2 bursts per measure
-        for (let b = 0; b < bursts; b++) {
-            const startBeat = rng.int(0, 3);
-            const runLength = rng.int(4, 9); // Run of 4 to 9 notes
-            let currentDeg = rng.pick([0, 4, 5, 7]);
-            const dir = rng.pick([1, -1]); // Sweep up or down
-
-            for (let i = 0; i < runLength; i++) {
-                currentDeg += dir;
-                arpEvents.push({ 
-                    time: `${m}:${startBeat}:${i}`, // 16th note spacing
-                    note: getNoteInScale(root, 5, scale, currentDeg), 
-                    duration: "32n", 
-                    velocity: safeVel(0.4 + (Math.sin(i * 0.5) * 0.2)) // Humanized swelling volume
-                });
-            }
-        }
-    }
-    engine.scheduleTrack('arp', 'arpLute', arpEvents, "4m");
-
-    // --- 4. STRUCTURED WAR MOTIF (16 Measure Loop) ---
-    // Creates a hummable, aggressive melody using an A-B-A-C structure
-    function generateWarMotif(baseDeg) {
-        const events =[];
-        let beat = 0;
-        let currentDeg = baseDeg + rng.pick([0, 4, 7]);
-
-        while (beat < 8) { // 2 measure motif
-            if (rng.chance(0.6)) {
-                currentDeg += rng.pick([1, -1, 2, -2, 0]);
-                events.push({
-                    time: `0:${Math.floor(beat)}:${Math.floor((beat % 1) * 4)}`,
-                    note: getNoteInScale(root, 4, scale, currentDeg),
-                    duration: rng.pick(["8n", "16n", "4n"]),
-                    velocity: safeVel(rng.float(0.7, 0.9))
-                });
-            }
-            beat += rng.pick([0.5, 0.5, 1.0]); // Fast, syncopated steps
-        }
-        return events;
-    }
-
-    const motifA = generateWarMotif(prog[0]);
-    const motifB = generateWarMotif(prog[1]);
-    const motifC = generateWarMotif(prog[3]);
-
-    const shiftMotif = (motif, targetMeasure) => {
-        return motif.map(e => {
-            const parts = e.time.split(':');
-            return { ...e, time: `${parseInt(parts[0]) + targetMeasure}:${parts[1]}:${parts[2]}` };
-        });
-    };
-
-    const leadEvents =[];
-    leadEvents.push(...shiftMotif(motifA, 0));
-    leadEvents.push(...shiftMotif(motifB, 4));
-    leadEvents.push(...shiftMotif(motifA, 8));
-    leadEvents.push(...shiftMotif(motifC, 12));
-
-    engine.scheduleTrack('lead', leadSynth, leadEvents, "16m");
-
-    // --- 5. SPARKS & CINDERS (5 Measure Loop) ---
-    const chimeEvents =[];
-    for (let m = 0; m < 5; m++) {
-        if (rng.chance(0.3)) { // Reduced frequency to save CPU
-            const beat = rng.int(0, 3);
-            const sixteenth = rng.pick([0, 2]);
+    // --- 3. EXOTIC LUTE TRILLS (Oud-style playing) (6 Measure Loop) ---
+    const arpEvents = [];
+    for (let m = 0; m < 6; m++) {
+        if (rng.chance(0.6)) {
+            const beat = rng.pick([0, 2]);
+            const startDeg = rng.pick([0, 1, 4, 5]);
             
-            chimeEvents.push({ 
-                time: `${m}:${beat}:${sixteenth}`, 
-                note:[
-                    getNoteInScale(root, 6, scale, rng.pick([0, 4])), 
-                    getNoteInScale(root, 6, scale, rng.pick([1, 5]))
-                ], 
-                duration: "16n", 
-                velocity: safeVel(rng.float(0.5, 0.8)) 
+            // Rapid 32nd note trills simulating a plucked desert instrument
+            const trillLen = rng.pick([3, 5]);
+            for (let i = 0; i < trillLen; i++) {
+                const trillDeg = i % 2 === 0 ? startDeg : startDeg + 1;
+                arpEvents.push({ 
+                    time: `${m}:${beat}:${i * 0.5}`, 
+                    note: getNoteInScale(root, 4, scale, trillDeg), 
+                    duration: "32n", 
+                    velocity: safeVel(0.7 - (i * 0.1)) 
+                });
+            }
+            // End on a sustained note
+            arpEvents.push({ 
+                time: `${m}:${beat}:${trillLen * 0.5}`, 
+                note: getNoteInScale(root, 4, scale, startDeg), 
+                duration: "8n", 
+                velocity: safeVel(0.8) 
             });
         }
     }
-    engine.scheduleTrack('chimes', 'chimesGlass', chimeEvents, "5m");
+    engine.scheduleTrack('arp', 'arpLute', arpEvents, "6m");
+
+    // --- 4. MYSTERIOUS WANDERING LEAD (12 Measure Loop) ---
+    const leadEvents = [];
+    for (let m = 0; m < 12; m += rng.int(2, 4)) {
+        if (rng.chance(0.8)) {
+            const startBeat = rng.pick([1, 3]); // Starts on off-beats
+            const baseDeg = rng.pick([0, 1, 4, 7]);
+            
+            // Slides and slurs
+            leadEvents.push({ 
+                time: `${m}:${startBeat}:0`, 
+                note: getNoteInScale(root, 5, scale, baseDeg), 
+                duration: "8n", 
+                velocity: safeVel(0.7) 
+            });
+            leadEvents.push({ 
+                time: `${m}:${startBeat}:2`, 
+                note: getNoteInScale(root, 5, scale, baseDeg + rng.pick([1, -1])), 
+                duration: "2n", 
+                velocity: safeVel(0.9) 
+            });
+        }
+    }
+    engine.scheduleTrack('lead', leadSynth, leadEvents, "12m");
 }
