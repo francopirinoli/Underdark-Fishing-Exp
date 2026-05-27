@@ -141,20 +141,51 @@ export const SFX = {
         SYNTHS.cast.triggerAttackRelease("4n", now);
     },
     
+    // --- THROTTLED AUDIO TRIGGERS ---
+    _lastSnapTime: 0,
+    _lastSplashTime: 0,
+
     playSplash() {
         if (!SYNTHS.splash) return;
-        const now = Tone.now() + LOOKAHEAD;
-        SYNTHS.splashFilter.frequency.setValueAtTime(getRandomInRange(600, 1500), now);
-        SYNTHS.splash.triggerAttackRelease("8n", now);
+        const nowMs = Date.now();
+        if (nowMs - this._lastSplashTime < 100) return; // 100ms throttle
+        this._lastSplashTime = nowMs;
+
+        try {
+            const now = Tone.now() + LOOKAHEAD;
+            SYNTHS.splashFilter.frequency.setValueAtTime(getRandomInRange(600, 1500), now);
+            SYNTHS.splash.triggerAttackRelease("8n", now);
+        } catch(e) {}
+    },
+
+    playLineSnap() {
+        if (!SYNTHS.snap) return;
+        const nowMs = Date.now();
+        if (nowMs - this._lastSnapTime < 150) return; // 150ms throttle prevents collision spam crash!
+        this._lastSnapTime = nowMs;
+
+        try {
+            const now = Tone.now() + LOOKAHEAD;
+            SYNTHS.snap.frequency.setValueAtTime("C3", now);
+            SYNTHS.snap.frequency.exponentialRampToValueAtTime("C1", now + 0.2);
+            SYNTHS.snap.triggerAttackRelease("8n", now);
+        } catch(e) {}
     },
 
     playThrash() {
         if (!SYNTHS.splash) return;
-        const now = Tone.now() + LOOKAHEAD;
-        SYNTHS.splashFilter.frequency.setValueAtTime(getRandomInRange(300, 800), now);
-        SYNTHS.splash.triggerAttackRelease("4n", now);
+        const nowMs = Date.now();
+        // --- FIX: Shares the splash throttle to prevent Tone.js scheduling overlap ---
+        if (nowMs - this._lastSplashTime < 150) return; 
+        this._lastSplashTime = nowMs;
+
+        try {
+            const now = Tone.now() + LOOKAHEAD;
+            SYNTHS.splashFilter.frequency.setValueAtTime(getRandomInRange(300, 800), now);
+            SYNTHS.splash.triggerAttackRelease("4n", now);
+        } catch(e) {}
     },
-    
+
     playBoatMove() {
         if (!SYNTHS.ripple) return;
         const now = Tone.now() + LOOKAHEAD;
@@ -163,13 +194,6 @@ export const SFX = {
         SYNTHS.ripple.triggerAttackRelease("4n", now);
     },
     
-    playLineSnap() {
-        if (!SYNTHS.snap) return;
-        const now = Tone.now() + LOOKAHEAD;
-        SYNTHS.snap.frequency.setValueAtTime("C3", now);
-        SYNTHS.snap.frequency.exponentialRampToValueAtTime("C1", now + 0.2);
-        SYNTHS.snap.triggerAttackRelease("8n", now);
-    },
     
     playCatchSuccess() {
         if (!SYNTHS.catch) return;

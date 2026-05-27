@@ -107,7 +107,7 @@ export function generateFishData(options = {}) {
     const artRng = createRng(seed + 2);  // Used strictly for pixel art
     const statRng = createRng(seed + 3); // Used for combat & economy stats
 
-    // --- NEW: BOSS DATA INTERCEPT ---
+    // --- NEW: BOSS DATA INTERCEPT (Fungal) ---
     if (options.bossId === 'vesper_bloom_leviathan') {
         const artPhase1 = generateBossArt({ bossId: 'vesper_bloom_leviathan', rng: artRng, phase: 1 });
         const artPhase2 = generateBossArt({ bossId: 'vesper_bloom_leviathan', rng: artRng, phase: 2 });
@@ -119,14 +119,20 @@ export function generateFishData(options = {}) {
             identity: { name: 'Vesper-Bloom Leviathan', family: 'deepsea', rarity: 'Boss' },
             art: { 
                 imageDataUrl: artPhase1.imageDataUrl, 
-                // Store all 3 phases so the fishing UI can swap them
                 phaseUrls: { 1: artPhase1.imageDataUrl, 2: artPhase2.imageDataUrl, 3: artPhase3.imageDataUrl },
                 palette: 'Toxic Fungal', metadata: {} 
             },
             environment: { biomes: ['fungal'], depthPref: 'Bottom-feeder', tempPref: 30, activeHours: 'Always Active' },
             lurePrefs: { color: -60, sound: -80, light: 90, weight: -40, tolerance: 0.15 }, 
             physical: { sizeTier: 'Massive', weightRange: { min: 1200.0, max: 1800.0 } },
-            combat: { stamina: 340, speed: 35, aggression: 0.65, hookWindowMs: 2500, optimalReel: 50 },
+            // --- UPDATED: 3-Phase Sequential Stats ---
+            combat: { 
+                stamina: [250, 150, 0], 
+                speed: [35, 45, 55], 
+                aggression: [0.65, 0.75, 0.85], 
+                hookWindowMs: 2500, 
+                optimalReel: [50, 45, 40] 
+            },
             economy: { pricePerKg: 10.0, baseValue: 15000, baseXp: 500 }
         };
     }
@@ -143,16 +149,20 @@ export function generateFishData(options = {}) {
             identity: { name: 'The Geode Monarch', family: 'crustacean', rarity: 'Boss' },
             art: { 
                 imageDataUrl: artPhase1.imageDataUrl, 
-                // Store all 3 generated phases for dynamic combat swaps
                 phaseUrls: { 1: artPhase1.imageDataUrl, 2: artPhase2.imageDataUrl, 3: artPhase3.imageDataUrl },
                 palette: 'Prismatic', metadata: {} 
             },
             environment: { biomes: ['crystal'], depthPref: 'Bottom-feeder', tempPref: 0, activeHours: 'Always Active' },
-            // Perfect match for the Prismatic Geode Hook (+80 Color, -50 Sound, +95 Light, +70 Weight)
             lurePrefs: { color: 80, sound: -50, light: 95, weight: 70, tolerance: 0.15 }, 
             physical: { sizeTier: 'Massive', weightRange: { min: 450.0, max: 650.0 } },
-            // Rapid attack speed (60), heavy armor, narrow optimal reel spot (55%)
-            combat: { stamina: 300, speed: 60, aggression: 0.75, hookWindowMs: 2000, optimalReel: 55 },
+            // --- UPDATED: 3-Phase Sequential Stats ---
+            combat: { 
+                stamina: [200, 100, 0], 
+                speed: [60, 70, 80], 
+                aggression: [0.75, 0.85, 0.95], 
+                hookWindowMs: 2000, 
+                optimalReel: [55, 50, 45] 
+            },
             economy: { pricePerKg: 15.0, baseValue: 15000, baseXp: 500 }
         };
     }
@@ -173,11 +183,16 @@ export function generateFishData(options = {}) {
                 palette: 'Magma Vent', metadata: {} 
             },
             environment: { biomes: ['volcanic'], depthPref: 'Bottom-feeder', tempPref: 100, activeHours: 'Always Active' },
-            // Matched to the Brimstone Hook
             lurePrefs: { color: 95, sound: 80, light: 70, weight: 90, tolerance: 0.15 }, 
             physical: { sizeTier: 'Massive', weightRange: { min: 1800.0, max: 2800.0 } },
-            // Boss mechanics: high speed, deep run zones
-            combat: { stamina: 350, speed: 45, aggression: 0.85, hookWindowMs: 2000, optimalReel: 35 },
+            // --- UPDATED: 3-Phase Sequential Stats ---
+            combat: { 
+                stamina: [250, 120, 0], 
+                speed: [45, 55, 65], 
+                aggression: [0.85, 0.90, 0.95], 
+                hookWindowMs: 2000, 
+                optimalReel: [35, 30, 25] 
+            },
             economy: { pricePerKg: 12.0, baseValue: 20000, baseXp: 750 }
         };
     }

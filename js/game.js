@@ -1479,7 +1479,10 @@ function setupInputListeners() {
                 if (!keys.action) keys.actionJustPressed = true;
                 keys.action = true;
             }
-        } else if (currentState === STATE.FISHING && e.code === 'Space') isReeling = true;
+        } else if (currentState === STATE.FISHING && e.code === 'Space') {
+            isReeling = true;
+            if (FishingEngine.phase === 'BITE') attemptHookAndMusic(); // <-- FIXED
+        }
     };
 
     window.onkeyup = (e) => {
@@ -1505,7 +1508,10 @@ function setupInputListeners() {
         if (currentState === STATE.EXPLORATION) { mouse.isCharging = true; mouse.chargePct = 0; }
         else if (currentState === STATE.FISHING) {
             if (FishingEngine.phase === 'SINKING') handleEndFishing("Cast cancelled.", "normal");
-            else { isReeling = true; if (FishingEngine.phase === 'BITE') FishingEngine.attemptHook(); }
+            else { 
+                isReeling = true; 
+                if (FishingEngine.phase === 'BITE') attemptHookAndMusic(); // <-- FIXED
+            }
         }
     };
 
@@ -1716,4 +1722,13 @@ window.TeleportToSettlement = function(nameOrIndex) {
     
     return `❌ Settlement not found! Type ListSettlements() to see valid names and numbers.`;
 };
+
+// --- NEW: Unified Hook and Battle Music Trigger ---
+function attemptHookAndMusic() {
+    if (FishingEngine.attemptHook()) {
+        if (FishingEngine.fishData.identity.rarity === 'Boss') {
+            MusicEngine.playBiome('battle', createRng(Date.now()));
+        }
+    }
+}
 }

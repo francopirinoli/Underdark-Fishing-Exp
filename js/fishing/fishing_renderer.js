@@ -222,6 +222,10 @@ export const FishingRenderer = {
         
         this.lastPhase = 'SINKING';
         this.lastAiState = 'HOLD';
+        this.lastBossPhase = 1; // <-- NEW
+        this.flashTimer = 0;    // <-- NEW: For screen-flashes on phase-up
+        this.announcement = { text: '', timer: 0, color: '' }; // <-- NEW: Epic JRPG text overlays
+        
         this.elements.behavior.innerText = "Sinking line...";
         this.elements.behavior.style.color = "#64748B";
 
@@ -376,6 +380,13 @@ export const FishingRenderer = {
 
     update(engine, dt, isReeling) {
         this._handlePhaseTransitions(engine);
+        
+        // --- NEW: Tick down visual timers ---
+        if (this.flashTimer > 0) this.flashTimer -= dt;
+        if (this.announcement && this.announcement.timer > 0) {
+            this.announcement.timer -= dt;
+        }
+        
         this._updateUIBars(engine, dt, isReeling);
         this._renderWaterColumn(engine, dt);
     },
@@ -387,8 +398,6 @@ export const FishingRenderer = {
                 this.elements.title.innerText = "!! BITE !!";
                 this.elements.title.style.color = "#EF4444";
                 this.elements.biteAlert.style.opacity = '1';
-                
-                // OPTIMIZATION 2: Precompute CPU-heavy filters once
                 this._precomputeFishStates(engine);
             } 
             else if (engine.phase === 'FIGHT') {
@@ -396,12 +405,51 @@ export const FishingRenderer = {
                 this.elements.title.innerText = `Fighting: ${engine.fishData.identity.name}`;
                 this.elements.title.style.color = getRarityColor(engine.fishData.identity.rarity);
                 this.elements.timerWrap.style.display = 'block';
+                this.lastBossPhase = 1; // Reset
             }
             else if (engine.phase === 'CAUGHT') SFX.playCatchSuccess();
             else if (engine.phase === 'SNAPPED') SFX.playLineSnap();
             else if (engine.phase === 'ESCAPED') SFX.playError();
             
             this.lastPhase = engine.phase;
+        }
+
+        // --- NEW: DETECT BOSS PHASE SHIFT DURING FIGHT ---
+        if (engine.phase === 'FIGHT') {
+            const isBoss = engine.fishData.identity.rarity === 'Boss';
+            if (isBoss && engine.bossPhase !== this.lastBossPhase) {
+                this.lastBossPhase = engine.bossPhase;
+                
+                // Full Screen Flash
+                this.flashTimer = 0.5;
+                
+                // Giant Center Text Announcement
+                this.announcement = {
+                    text: `PHASE ${engine.bossPhase}!`,
+                    timer: 2.0, // Lasts 2.0s
+                    color: getRarityColor('Boss')
+                };
+                
+                // Bursting visual particles
+                this._spawnTransitionExplosion();
+                
+                // Play heavy thrashes
+                SFX.playThrash();
+            }
+        }
+    },
+
+    // --- NEW: Spawn bursting steam/bubble cloud ---
+    _spawnTransitionExplosion() {
+        for (let i = 0; i < 35; i++) {
+            this.particles.push({
+                x: this.CW / 2 + (Math.random() - 0.5) * 60,
+                y: this.CH * 0.45 + (Math.random() - 0.5) * 60,
+                speed: Math.random() * 3.0 + 1.5,
+                size: Math.random() * 6 + 3,
+                wobble: Math.random() * Math.PI * 2,
+                color: '#FFFFFF' // Blinding white steam
+            });
         }
     },
 
@@ -417,8 +465,16 @@ export const FishingRenderer = {
         }
 
         if (engine.phase !== 'FIGHT') {
-            SFX.updateReel(false); // <-- NEW: Safely kill the sound if line snaps or fish is caught
+            SFX.updateReel(false); 
             return;
+        }
+
+        // --- NEW: Dynamic Phase Title Bar Update ---
+        const isBoss = engine.fishData.identity.rarity === 'Boss';
+        if (isBoss) {
+            this.elements.title.innerText = `Fighting: ${engine.fishData.identity.name} [Phase ${engine.bossPhase}/3]`;
+        } else {
+            this.elements.title.innerText = `Fighting: ${engine.fishData.identity.name}`;
         }
 
         this.elements.lblTimer.innerText = Math.max(0, engine.fightTimer).toFixed(1);
@@ -576,21 +632,19 @@ export const FishingRenderer = {
         const surfaceY = LURE_Y - (engine.currentDepth * PX_PER_METER);
         const bottomY = LURE_Y + ((engine.maxDepth - engine.currentDepth) * PX_PER_METER);
 
-        // OPTIMIZATION 3: Draw Cached Gradient Slice without horizontal stretching
+        // Draw Cached Gradient Slice
         const startDrawY = Math.max(0, surfaceY);
         const sliceHeight = this.CH - startDrawY;
         const gradStartY = engine.currentDepth * PX_PER_METER;
         
         if (this.bgGradientCanvas && sliceHeight > 0) {
-            // FIX: Removed the '1' parameter. Directly matches canvas width.
             ctx.drawImage(this.bgGradientCanvas, 0, gradStartY, this.CW, sliceHeight, 0, startDrawY, this.CW, sliceHeight);
         } else {
             ctx.fillStyle = this.biomePal.water;
             ctx.fillRect(0, 0, this.CW, this.CH);
         }
 
-
-        // 2. Draw Particles
+        // Draw Particles
         ctx.fillStyle = '#FFFFFF';
         this.particles.forEach(p => {
             p.y -= p.speed * dt * 40; 
@@ -606,7 +660,7 @@ export const FishingRenderer = {
             }
         });
 
-        // 3. Draw Sea Floor & Flora
+        // Draw Sea Floor & Flora
         if (bottomY < this.CH + 50) {
             ctx.fillStyle = this.biomePal.land;
             ctx.fillRect(0, bottomY, this.CW, this.CH - bottomY);
@@ -620,20 +674,15 @@ export const FishingRenderer = {
                 ctx.fill();
             }
 
-        // OPTIMIZATION 4: Render Precomputed Flora Frames instead of using Matrix Transforms
             if (this.tileId === TILE.FLORA && this.floraFrames && this.floraFrames.length > 0) {
-                // engine.waterCurrent bounces between approx -1.5 and 1.5
                 let normalized = (engine.waterCurrent + 1.5) / 3.0;
                 normalized = Math.max(0, Math.min(1, normalized));
-                
-                // Select the correct animation frame (0 to 6) based on current water speed
                 const frameIdx = Math.floor(normalized * (this.floraFrames.length - 1));
-                
                 ctx.drawImage(this.floraFrames[frameIdx], 0, bottomY - 60);
             }
         }
 
-        // 4. Draw Surface
+        // Draw Surface
         if (surfaceY > 0) {
             ctx.fillStyle = '#020617'; 
             ctx.fillRect(0, 0, this.CW, surfaceY);
@@ -641,7 +690,7 @@ export const FishingRenderer = {
             ctx.fillRect(0, surfaceY, this.CW, 4);
         }
 
-        // 5. Draw Fishing Line
+        // Draw Fishing Line
         const lureW = this.lureImg ? this.lureImg.width * 0.5 : 10;
         const lureH = this.lureImg ? this.lureImg.height * 0.5 : 10;
         const lureX = this.CW / 2;
@@ -664,84 +713,93 @@ export const FishingRenderer = {
         ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, lureX, lineEndY);
         ctx.stroke();
 
-        // 6. Draw Lure
+        // Draw Lure
         if (this.lureImg && engine.phase !== 'SNAPPED') {
             const lSway = engine.waterCurrent * 2;
             ctx.drawImage(this.lureImg, lureX - (lureW / 2) + lSway, LURE_Y, lureW, lureH);
         }
 
-        // 7. Draw Fish
-        if (this.fishImgNormal && engine.phase !== 'SINKING') {
+        // Draw Fish
+        if (this.fishImgNormal && this.fishImgNormal.complete && engine.phase !== 'SINKING') {
             ctx.save();
             const fw = this.fishImgNormal.width * 0.6; 
             const fh = this.fishImgNormal.height * 0.6;
             
-            let fx = lureX;
-            let fy = LURE_Y + (fh / 2) - 10; 
-            let rotation = 0;
-            
-            let activeFishImg = this.fishImgNormal;
-
-            // --- NEW: Multi-Phase Boss Rendering ---
-            if (engine.fishData.identity.rarity === 'Boss' && this.bossImgPhase1) {
-                if (engine.ai.state === 'SECOND_WIND') activeFishImg = this.bossImgPhase3;
-                else if (engine.fishStamina / engine.maxFishStamina <= 0.5) activeFishImg = this.bossImgPhase2;
-                else activeFishImg = this.bossImgPhase1;
-            }
-
-            if (engine.phase === 'BITE') {
-                if (engine.fishData.identity.rarity !== 'Boss') activeFishImg = this.fishImgBite || this.fishImgNormal;
-                fx += Math.sin(Date.now() / 200) * 20; 
-            } 
-            else if (engine.phase === 'FIGHT') {
-                if (engine.fishStamina <= 0 && engine.fishData.identity.rarity !== 'Boss') activeFishImg = this.fishImgTired || this.fishImgNormal;
+            if (fw > 0 && fh > 0) {
+                let fx = lureX;
+                let fy = LURE_Y + (fh / 2) - 10; 
+                let rotation = 0;
                 
-                if (engine.ai.state === 'HOLD' || engine.ai.state === 'INANIMATE') {
-                    fy += Math.sin(Date.now() / 300) * 5;
-                } else if (engine.ai.state === 'RUN') {
-                    fx += (Math.random() - 0.5) * 8;
-                    fy += 15; 
-                    rotation = Math.PI * 0.05; 
-                } else if (engine.ai.state === 'THRASH') {
-                    fx += (Math.random() - 0.5) * 25;
-                    fy += (Math.random() - 0.5) * 25;
-                    rotation = (Math.random() - 0.5) * 0.3;
-                } else if (engine.ai.state === 'BURST') {
-                    fy += 25; 
+                let activeFishImg = this.fishImgNormal;
+
+                // --- NEW: Sequential 3-Phase Boss Rendering ---
+                if (engine.fishData.identity.rarity === 'Boss' && this.bossImgPhase1) {
+                    if (engine.bossPhase === 3) activeFishImg = this.bossImgPhase3;
+                    else if (engine.bossPhase === 2) activeFishImg = this.bossImgPhase2;
+                    else activeFishImg = this.bossImgPhase1;
+                }
+
+                if (engine.phase === 'BITE') {
+                    if (engine.fishData.identity.rarity !== 'Boss') activeFishImg = this.fishImgBite || this.fishImgNormal;
+                    fx += Math.sin(Date.now() / 200) * 20; 
+                } 
+                else if (engine.phase === 'FIGHT') {
+                    if (engine.fishStamina <= 0 && engine.fishData.identity.rarity !== 'Boss') activeFishImg = this.fishImgTired || this.fishImgNormal;
+                    
+                    if (engine.ai.state === 'HOLD' || engine.ai.state === 'INANIMATE') {
+                        fy += Math.sin(Date.now() / 300) * 5;
+                    } else if (engine.ai.state === 'RUN') {
+                        fx += (Math.random() - 0.5) * 8;
+                        fy += 15; 
+                        rotation = Math.PI * 0.05; 
+                    } else if (engine.ai.state === 'THRASH') {
+                        fx += (Math.random() - 0.5) * 25;
+                        fy += (Math.random() - 0.5) * 25;
+                        rotation = (Math.random() - 0.5) * 0.3;
+                    } else if (engine.ai.state === 'BURST') {
+                        fy += 25; 
+                    }
+                }
+                else if (engine.phase === 'CAUGHT') {
+                    fy = LURE_Y; 
+                    rotation = -Math.PI / 2; 
+                } 
+                else if (engine.phase === 'ESCAPED' || engine.phase === 'SNAPPED') {
+                    ctx.globalAlpha = 0.4; 
+                    fy += 60; 
+                }
+
+                ctx.translate(fx, fy);
+                ctx.rotate(rotation);
+                
+                if (activeFishImg) {
+                    ctx.drawImage(activeFishImg, -fw / 2, -fh / 2, fw, fh);
                 }
             }
-            else if (engine.phase === 'CAUGHT') {
-                fy = LURE_Y; 
-                rotation = -Math.PI / 2; 
-            } 
-            else if (engine.phase === 'ESCAPED' || engine.phase === 'SNAPPED') {
-                ctx.globalAlpha = 0.4; 
-                fy += 60; 
-            }
-
-            ctx.translate(fx, fy);
-            ctx.rotate(rotation);
-            if (activeFishImg.complete) ctx.drawImage(activeFishImg, -fw / 2, -fh / 2, fw, fh);
             ctx.restore();
         }
 
-        // --- NEW: GEODE MONARCH PRISMATIC FLASH (RAINBOW CANVAS OVERLAY) ---
-        const isPrismaticFlash = (engine.fishData && engine.fishData.id === 'geode_monarch' && 
-                                  engine.fishStamina / engine.maxFishStamina <= 0.4 && 
-                                  engine.ai.state !== 'SECOND_WIND');
+        // --- NEW: LAVA BOSS STEAM HAZES ---
+        const isLavaBoss = engine.fishData && engine.fishData.id === 'ignis_gorged_serpentine';
+        if (isLavaBoss && engine.bossPhase >= 2 && engine.phase === 'FIGHT') {
+            const hazeHeight = 90;
+            const grad = ctx.createLinearGradient(0, this.CH - hazeHeight, 0, this.CH);
+            const alpha = 0.12 + Math.sin(Date.now() / 150) * 0.06; // Shifting heat glow
+            grad.addColorStop(0, 'rgba(239, 68, 68, 0)');
+            grad.addColorStop(1, `rgba(239, 68, 68, ${alpha})`);
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, this.CH - hazeHeight, this.CW, hazeHeight);
+        }
+
+        // --- NEW: GEODE MONARCH PRISMATIC FLASH (Phase 2 strictly) ---
+        const isPrismaticFlash = (engine.fishData && engine.fishData.id === 'geode_monarch' && engine.bossPhase === 2 && engine.phase === 'FIGHT');
 
         if (isPrismaticFlash) {
-            const timeSec = Date.now() / 1000;
             const grad = ctx.createLinearGradient(0, 0, this.CW, this.CH);
-            
-            // Constantly shift the HSL hue angle over time
             const hueOffset = (timeSec * 180) % 360; 
-            
-            // Pulse intensity matching the UI opacity
             const pulse = (Math.sin(timeSec * 8.0) + 1) / 2;
-            const pulseIntensity = 0.12 + pulse * 0.18; // Oscillates between 12% and 30% alpha
+            const pulseIntensity = 0.12 + pulse * 0.18; 
 
-            // Build our shifting prismatic spectrum
             grad.addColorStop(0, `hsla(${hueOffset}, 100%, 50%, ${pulseIntensity})`);
             grad.addColorStop(0.5, `hsla(${(hueOffset + 120) % 360}, 100%, 50%, ${pulseIntensity})`);
             grad.addColorStop(1, `hsla(${(hueOffset + 240) % 360}, 100%, 50%, ${pulseIntensity})`);
@@ -749,9 +807,36 @@ export const FishingRenderer = {
             ctx.fillStyle = grad;
             ctx.fillRect(0, 0, this.CW, this.CH);
 
-            // Draw a central vertical laser glint
             ctx.fillStyle = `rgba(255, 255, 255, ${pulseIntensity * 0.4})`;
             ctx.fillRect(this.CW / 2 - 12, 0, 24, this.CH);
         }
-    } // <-- End of _renderWaterColumn function
+
+        // --- NEW: SCREEN TRANSITION FLASH ---
+        if (this.flashTimer > 0) {
+            ctx.fillStyle = `rgba(255, 255, 255, ${Math.min(1.0, this.flashTimer / 0.5)})`;
+            ctx.fillRect(0, 0, this.CW, this.CH);
+        }
+
+        // --- NEW: GIANT CENTER ANNOUNCEMENT ---
+        if (this.announcement && this.announcement.timer > 0) {
+            ctx.save();
+            ctx.font = 'bold 24px "Courier New", monospace';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            
+            // Pulse the text size slightly
+            const scale = 1.0 + Math.sin(Date.now() / 80) * 0.1;
+            ctx.translate(this.CW / 2, this.CH / 2 - 30);
+            ctx.scale(scale, scale);
+            
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 4;
+            ctx.strokeText(this.announcement.text, 0, 0);
+            
+            ctx.fillStyle = this.announcement.color;
+            ctx.fillText(this.announcement.text, 0, 0);
+            
+            ctx.restore();
+        }
+    }
 };
