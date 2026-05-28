@@ -135,7 +135,7 @@ export const MusicEngine = {
             this.synths.guitarChug = new Tone.Sampler({ urls: { "E2": bufGuitar }, release: 0.1 }).connect(this.warmFilter);
             this.synths.guitarChug.volume.value = -8;
 
-            this.synths.metalSnare = new Tone.Sampler({ urls: { "C4": bufMetalSnare }, release: 0.2 }).connect(this.echoDelay);
+            this.synths.metalSnare = new Tone.Sampler({ urls: { "C4": bufMetalSnare }, release: 0.2 }).connect(this.warmFilter);
             this.synths.metalSnare.volume.value = -10;
 
             this.synths.metalKick = new Tone.Sampler({ urls: { "C1": bufMetalKick }, release: 0.1 }).connect(this.warmFilter);
