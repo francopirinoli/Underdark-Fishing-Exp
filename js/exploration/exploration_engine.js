@@ -14,13 +14,16 @@ export const ExplorationEngine = {
     velocity: 0,
     heading: -Math.PI / 2, 
     currentNoise: 0, 
-    npcBoats:[], // <-- REPLACED fishermanPos with an array
+    npcBoats:[], 
     
     // --- Hazard State ---
     biomeId: null,
     weather: null,
+    roomType: null, 
     volcanicTimer: 0,
     crystalTimer: 0,
+    sirenAngle: 0, // <-- NEW
+    sirenTimer: 0, // <-- NEW
     isWarping: false,
     
     // --- Data References ---
@@ -36,16 +39,17 @@ export const ExplorationEngine = {
     onZoneTransition: null,
     onDockInteract: null,
 
-    init(startX, startY, effectiveExplorationStats, localMapData, heading = -Math.PI / 2, velocity = 0, npcBoats =[], biomeId = null, weather = null) {
+    init(startX, startY, effectiveExplorationStats, localMapData, heading = -Math.PI / 2, velocity = 0, npcBoats =[], biomeId = null, weather = null, roomType = null) {
         this.x = startX;
         this.y = startY;
         this.velocity = velocity; 
         this.heading = heading;   
         this.currentNoise = 0;    
-        this.npcBoats = npcBoats; // <-- UPDATED
+        this.npcBoats = npcBoats; 
         
         this.biomeId = biomeId;
         this.weather = weather;
+        this.roomType = roomType; // Added
         this.volcanicTimer = 5.0; 
         this.crystalTimer = getRandomInRange(5.0, 15.0);
         this.isWarping = false; 
@@ -114,6 +118,127 @@ export const ExplorationEngine = {
             }
         }
 
+        // --- NEW: COSMIC STORM ENGINE SHEAR ---
+        if (this.roomType === 'cosmic_storm') {
+            const maxSpeed = this.boatStats.speed;
+            if (Math.abs(this.velocity) > (maxSpeed * 0.2)) {
+                this.volcanicTimer -= dt; // Reuse volcanic timer as tick timer
+                if (this.volcanicTimer <= 0) {
+                    this.volcanicTimer = 1.0; // Tick damage every 1.0s
+                    if (this.onDamage) this.onDamage(2, "Cosmic Storm");
+                }
+            }
+        }
+
+        // --- NEW: ASTRAL SIREN GRAVITY WELLS (Fluctuating Anomalies) ---
+        if (this.roomType === 'siren_trap') {
+            this.sirenTimer -= dt;
+            if (this.sirenTimer <= 0) {
+                // Pick a new random direction for the gravity wave to push
+                this.sirenAngle = Math.random() * Math.PI * 2;
+                this.sirenTimer = 1.0 + Math.random() * 2.0; // Changes direction every 1 to 3 seconds
+            }
+
+            const px = Math.floor(this.x);
+            const py = Math.floor(this.y);
+            const searchR = 30; 
+            
+            let nearestFlora = null;
+            let minDist = Infinity;
+            
+            for (let dy = -searchR; dy <= searchR; dy += 2) { 
+                for (let dx = -searchR; dx <= searchR; dx += 2) {
+                    const tx = px + dx;
+                    const ty = py + dy;
+                    if (tx >= 0 && tx < LOCAL_MAP_SIZE && ty >= 0 && ty < LOCAL_MAP_SIZE) {
+                        if (this.localMap.grid[ty][tx] === TILE.FLORA) {
+                            const dist = Math.hypot(tx - this.x, ty - this.y);
+                            if (dist < minDist) {
+                                minDist = dist;
+                                nearestFlora = { x: tx, y: ty };
+                            }
+                        }
+                    }
+                }
+            }
+            
+            if (nearestFlora && minDist < 45) { 
+                // Stronger push as you get closer to the flora
+                const forceMult = Math.max(0, 1.0 - (minDist / 45));
+                const pushForce = 50.0 * forceMult; // Strong directional shove
+                
+                // Apply the fluctuating gravity vector!
+                moveX += Math.cos(this.sirenAngle) * pushForce * dt;
+                moveY += Math.sin(this.sirenAngle) * pushForce * dt;
+            }
+        }
+
+        // --- NEW: PHANTOM SHIPS CHASE AI (Tank Controls) ---
+        if (this.roomType === 'phantom_room' && this.npcBoats && this.npcBoats.length > 0) {
+            this.npcBoats.forEach(phantom => {
+                if (!phantom.isPhantom) return;
+                if (phantom.heading === undefined) phantom.heading = 0; // Initialize heading
+                
+                // --- NEW: RECOIL STUN LOGIC ---
+                if (phantom.stunTimer > 0) {
+                    phantom.stunTimer -= dt;
+                    // Drift backward helplessly while stunned
+                    phantom.x -= Math.cos(phantom.heading) * 20.0 * dt;
+                    phantom.y -= Math.sin(phantom.heading) * 20.0 * dt;
+                    return; // Skip chase AI this frame!
+                }
+                
+                const distToPlayer = Math.hypot(this.x - phantom.x, this.y - phantom.y);
+                const noise = this.currentNoise || 0;
+                
+                // Aggro if player makes noise OR if they sail too close (sentry proximity check)
+                if (noise > 30 || distToPlayer < 60) { 
+                    phantom.targetX = this.x;
+                    phantom.targetY = this.y;
+                    phantom.state = 'CHASE';
+                } else if (distToPlayer > 180) {
+                    // Head home if player slips away
+                    phantom.targetX = phantom.homeX;
+                    phantom.targetY = phantom.homeY;
+                    phantom.state = 'RETURN';
+                }
+
+                if (phantom.state === 'CHASE' || phantom.state === 'RETURN') {
+                    const dx = phantom.targetX - phantom.x;
+                    const dy = phantom.targetY - phantom.y;
+                    const dist = Math.hypot(dx, dy);
+                    
+                    if (dist > 5) {
+                        // Determine desired angle to target
+                        const targetAngle = Math.atan2(dy, dx);
+                        
+                        // Calculate shortest turn direction
+                        let angleDiff = targetAngle - phantom.heading;
+                        while (angleDiff <= -Math.PI) angleDiff += Math.PI * 2;
+                        while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+                        
+                        // Rotate smoothly towards target
+                        const turnSpeed = 2.5; // Radians per second
+                        if (Math.abs(angleDiff) < turnSpeed * dt) {
+                            phantom.heading = targetAngle;
+                        } else {
+                            phantom.heading += Math.sign(angleDiff) * turnSpeed * dt;
+                        }
+
+                        // Move forward along heading (only if facing roughly the right way)
+                        // SPEED NERF: Slowed down from 85 so the player isn't instantly overwhelmed
+                        const chaseSpeed = phantom.state === 'CHASE' ? 45.0 : 25.0; 
+                        if (Math.abs(angleDiff) < Math.PI / 2) {
+                            phantom.x += Math.cos(phantom.heading) * chaseSpeed * dt;
+                            phantom.y += Math.sin(phantom.heading) * chaseSpeed * dt;
+                        }
+                    } else if (phantom.state === 'RETURN') {
+                        phantom.state = 'IDLE';
+                    }
+                }
+            });
+        }
+
         this.x += moveX;
         this.y += moveY;
 
@@ -171,7 +296,8 @@ export const ExplorationEngine = {
         const minY = Math.max(0, Math.floor(this.y - this.collisionRadius));
         const maxY = Math.min(LOCAL_MAP_SIZE - 1, Math.ceil(this.y + this.collisionRadius));
 
-        let hit = false;
+        let hitTerrain = false;
+        let hitPhantom = false;
         let impactVelocity = Math.abs(this.velocity);
 
         // A. Check against rock/land tiles
@@ -186,7 +312,7 @@ export const ExplorationEngine = {
                     const minSafeDistance = this.collisionRadius + 0.5;
 
                     if (distance < minSafeDistance) {
-                        hit = true;
+                        hitTerrain = true;
                         const overlap = minSafeDistance - distance;
                         this.x += (distX / distance) * overlap;
                         this.y += (distY / distance) * overlap;
@@ -195,7 +321,7 @@ export const ExplorationEngine = {
             }
         }
 
-        // B. Check against Array of NPC Boats
+        // B. Check against NPC Boats / Phantoms
         if (this.npcBoats && this.npcBoats.length > 0) {
             for (const npc of this.npcBoats) {
                 const distX = this.x - npc.x;
@@ -204,95 +330,62 @@ export const ExplorationEngine = {
                 const minSafeDistance = this.collisionRadius + 6;
 
                 if (distance < minSafeDistance) {
-                    hit = true;
                     const overlap = minSafeDistance - distance;
-                    this.x += (distX / distance) * overlap;
-                    this.y += (distY / distance) * overlap;
+                    
+                    // Push the player away (Elastic collision)
+                    this.x += (distX / distance) * overlap * 0.5;
+                    this.y += (distY / distance) * overlap * 0.5;
+                    
+                    if (npc.isPhantom) {
+                        hitPhantom = true;
+                        // Push the phantom away harder so it visibly recoils
+                        npc.x -= (distX / distance) * overlap * 1.5;
+                        npc.y -= (distY / distance) * overlap * 1.5;
+                        
+                        // --- NEW: TRIGGER STUN ---
+                        npc.stunTimer = 1.5; // Stun the phantom for 1.5 seconds
+                        
+                        // Phantom ramming damage trigger
+                        if (this.onDamage) {
+                            const nowMs = Date.now();
+                            // 2500ms (2.5s) i-frames gives the player time to bounce away and escape
+                            if (!npc.lastDamageTime || nowMs - npc.lastDamageTime > 2500) {
+                                npc.lastDamageTime = nowMs;
+                                if (Math.random() < this.boatStats.evasion) {
+                                    this.onDamage(0, "Dodge");
+                                } else {
+                                    const rawDmg = Math.floor(15 + Math.random() * 10); // 15 to 25 base damage
+                                    const finalDmg = Math.max(1, Math.floor(rawDmg * (1.0 - this.boatStats.damageReduction)));
+                                    this.onDamage(finalDmg, "Phantom Ram");
+                                }
+                            }
+                        }
+                    } else {
+                        hitTerrain = true; // Treat regular boats like a terrain bounce
+                    }
                 }
             }
         }
 
-        // Apply bounce and damage
-        if (hit) {
-            // High mass boats barely bounce backwards when they hit something!
+        // C. Apply global bounce and terrain damage
+        if (hitTerrain || hitPhantom) {
             const bounceFactor = Math.max(0.1, 0.4 * (50 / this.boatStats.mass));
             this.velocity = -this.velocity * bounceFactor; 
 
-            if (impactVelocity > 15 && this.onDamage) {
-                // 1. Check for Evasion
+            if (hitTerrain && impactVelocity > 15 && this.onDamage) {
                 if (Math.random() < this.boatStats.evasion) {
                     this.onDamage(0, "Dodge");
                 } else {
-                    // 2. Apply Damage Reduction (Armor)
                     let rawDmg = impactVelocity * 0.4;
-                    rawDmg *= this.boatStats.collisionDamageMult; // Icebreaker Prow
+                    rawDmg *= this.boatStats.collisionDamageMult; 
+                    
+                    // Multiply land crash damage by 1.5x in the Astral Sea
+                    if (this.biomeId === 'astral_sea') {
+                        rawDmg *= 1.5;
+                    }
                     
                     const finalDmg = Math.floor(rawDmg * (1.0 - this.boatStats.damageReduction));
                     this.onDamage(finalDmg, "Collision");
-                }
-            }
-        }
-    },
-
-    _checkCollisions() {
-        const minX = Math.max(0, Math.floor(this.x - this.collisionRadius));
-        const maxX = Math.min(LOCAL_MAP_SIZE - 1, Math.ceil(this.x + this.collisionRadius));
-        const minY = Math.max(0, Math.floor(this.y - this.collisionRadius));
-        const maxY = Math.min(LOCAL_MAP_SIZE - 1, Math.ceil(this.y + this.collisionRadius));
-
-        let hit = false;
-        let impactVelocity = Math.abs(this.velocity);
-
-        // A. Check against rock/land tiles
-        for (let ty = minY; ty <= maxY; ty++) {
-            for (let tx = minX; tx <= maxX; tx++) {
-                const tileId = this.localMap.grid[ty][tx];
-                
-                if (tileId === TILE.LAND || tileId === TILE.ROCK) {
-                    const distX = this.x - (tx + 0.5);
-                    const distY = this.y - (ty + 0.5);
-                    const distance = Math.hypot(distX, distY);
-                    const minSafeDistance = this.collisionRadius + 0.5;
-
-                    if (distance < minSafeDistance) {
-                        hit = true;
-                        const overlap = minSafeDistance - distance;
-                        this.x += (distX / distance) * overlap;
-                        this.y += (distY / distance) * overlap;
-                    }
-                }
-            }
-        }
-
-        // B. NEW: Check against Array of NPC Boats
-        if (this.npcBoats && this.npcBoats.length > 0) {
-            for (const npc of this.npcBoats) {
-                const distX = this.x - npc.x;
-                const distY = this.y - npc.y;
-                const distance = Math.hypot(distX, distY);
-                
-                // NPC boats have roughly a 6 grid-tile radius
-                const minSafeDistance = this.collisionRadius + 6;
-
-                if (distance < minSafeDistance) {
-                    hit = true;
-                    const overlap = minSafeDistance - distance;
-                    this.x += (distX / distance) * overlap;
-                    this.y += (distY / distance) * overlap;
-                }
-            }
-        }
-
-        // Apply bounce and damage
-        if (hit) {
-            this.velocity = -this.velocity * 0.4; 
-
-            if (impactVelocity > 20 && this.onDamage) {
-                if (Math.random() < this.boatStats.hazardDodgeChance) {
-                    console.log("Dodged collision damage!");
-                } else {
-                    const damage = Math.floor(impactVelocity * 0.1);
-                    this.onDamage(damage, "Collision");
                 }
             }
         }

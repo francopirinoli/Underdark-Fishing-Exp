@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Master Endgame Harness - Underdark Fishing</title>
     <link rel="icon" href="data:,">
+    <!-- Tone.js for Audio Engine -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
     <link rel="stylesheet" href="style.css">
     <style>
@@ -34,7 +35,6 @@
 
         #init-overlay { position: fixed; inset: 0; background: rgba(2, 6, 23, 0.95); z-index: 2000; display: flex; flex-direction: column; align-items: center; justify-content: center; }
         
-        /* Ensures the mouse wheel can scroll the reel power! */
         #fishing-container { position: relative; z-index: 3000; } 
         
         .grid-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
@@ -84,6 +84,10 @@
                                 <button class="btn" id="btn-art-frozen" style="flex:1;">Anglers Club</button>
                                 <button class="btn" id="btn-art-lava" style="flex:1; border-color: #EF4444; color: #EF4444;">Volcanic Arena</button>
                             </div>
+                            <!-- NEW ABYSSAL POI PREVIEW -->
+                            <div style="display: flex; gap: 0.5rem;">
+                                <button class="btn" id="btn-art-void" style="flex:1; border-color: #C084FC; color: #C084FC;">The Mage Tower</button>
+                            </div>
                         </div>
                         <img id="preview-poi" src="" style="width: 100%; border: 1px solid var(--border); border-radius: 4px; background: #000; image-rendering: pixelated; min-height: 120px;" alt="POI Preview">
                     </div>
@@ -98,10 +102,18 @@
                             <button class="btn" id="btn-art-boss-crystal" style="flex:1; border-color: #38BDF8; color: #38BDF8;">Geode Monarch (Ph 1)</button>
                             <button class="btn" id="btn-art-lure-crystal" style="flex:1; border-color: #38BDF8; color: #38BDF8;">Prismatic Geode Hook</button>
                         </div>
-                        <!-- NEW VOLCANIC PREVIEW BUTTONS -->
-                        <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem;">
+                        <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
                             <button class="btn" id="btn-art-boss-lava" style="flex:1; border-color: #EF4444; color: #EF4444;">Ignis Serpentine (Ph 1)</button>
                             <button class="btn" id="btn-art-lure-lava" style="flex:1; border-color: #EF4444; color: #EF4444;">Brimstone Hook</button>
+                        </div>
+                        <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
+                            <button class="btn" id="btn-art-boss-ice" style="flex:1; border-color: #60A5FA; color: #60A5FA;">Glacial Leviathan (Ph 1)</button>
+                            <button class="btn" id="btn-art-lure-ice" style="flex:1; border-color: #60A5FA; color: #60A5FA;">Glacial Hook</button>
+                        </div>
+                        <!-- NEW VOID PREVIEW BUTTONS -->
+                        <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem;">
+                            <button class="btn" id="btn-art-boss-void" style="flex:1; border-color: #C084FC; color: #C084FC;">Void-Bound Aboleth (Ph 1)</button>
+                            <button class="btn" id="btn-art-lure-void" style="flex:1; border-color: #C084FC; color: #C084FC;">Singularity Hook</button>
                         </div>
                         
                         <div style="text-align: center;">
@@ -112,11 +124,11 @@
             </div>
 
             <!-- ========================================== -->
-            <!-- TAB 2: POI SIMULATOR & DATA TRACKING       -->
+            <!-- TAB 2: POI SIMULATOR                       -->
             <!-- ========================================== -->
             <div id="tab-poi" class="tab-content">
                 <h2>Data Structure & Logic Simulation</h2>
-                <p class="muted">Simulates the <code>player.endgameProgress</code> data schema logic described in the design documents without needing a full gameplay loop.</p>
+                <p class="muted">Simulates the progress schema and dynamic state transitions of the five primary POIs.</p>
 
                 <div class="grid-2col">
                     <!-- FUNGAL -->
@@ -139,7 +151,7 @@
                             <span style="color:var(--cyan-glow); font-weight:bold;" id="sim-crystal-val">0 / 10,000 pts</span>
                         </div>
                         <div class="progress-bar"><div class="progress-fill" id="sim-crystal-bar" style="width: 0%; background: #38BDF8;"></div></div>
-                        <button class="btn" id="btn-sim-crystal" style="width: 100%; margin-top: 1rem;">Submit Random Fish (Score: ~500)</button>
+                        <button class="btn" id="btn-sim-crystal" style="width: 100%; margin-top: 1rem;">Submit Specimen (+1,000 pts)</button>
                         <div id="sim-crystal-log" style="font-size: 0.85rem; color: var(--muted); margin-top: 0.5rem; min-height: 1.2rem;"></div>
                     </div>
 
@@ -155,7 +167,8 @@
                             <span style="color:var(--cyan-glow); font-weight:bold;" id="sim-ice-val">0 / 1,001 pts</span>
                         </div>
                         <div class="progress-bar"><div class="progress-fill" id="sim-ice-bar" style="width: 0%; background: #E0E7FF;"></div></div>
-                        <button class="btn" id="btn-sim-ice" style="width: 100%; margin-top: 1rem;">Complete Achievement (+50 pts)</button>
+                        <button class="btn" id="btn-sim-ice" style="width: 100%; margin-top: 1rem;">Complete Feat (+100 pts)</button>
+                        <div id="sim-ice-log" style="font-size: 0.85rem; color: var(--muted); margin-top: 0.5rem; min-height: 1.2rem;"></div>
                     </div>
 
                     <!-- LAVA -->
@@ -163,10 +176,11 @@
                         <h3 style="color: #FCA5A5;">🌋 Aquatic Arena (Sulphur Springs)</h3>
                         <div style="display:flex; justify-content:space-between; margin-bottom:0.2rem;">
                             <span>Tournament Round:</span>
-                            <span style="color:var(--cyan-glow); font-weight:bold;" id="sim-lava-val">0 / 10</span>
+                            <span style="color:var(--cyan-glow); font-weight:bold;" id="sim-lava-val">0 / 10 Rounds</span>
                         </div>
                         <div class="progress-bar"><div class="progress-fill" id="sim-lava-bar" style="width: 0%; background: #EF4444;"></div></div>
-                        <button class="btn" id="btn-sim-lava" style="width: 100%; margin-top: 1rem;">Simulate Autobattler Win</button>
+                        <button class="btn" id="btn-sim-lava" style="width: 100%; margin-top: 1rem;">Advance Tier (+1 Tier)</button>
+                        <div id="sim-lava-log" style="font-size: 0.85rem; color: var(--muted); margin-top: 0.5rem; min-height: 1.2rem;"></div>
                     </div>
 
                     <!-- VOID -->
@@ -178,6 +192,7 @@
                         </div>
                         <div class="progress-bar"><div class="progress-fill" id="sim-void-bar" style="width: 0%; background: #C084FC;"></div></div>
                         <button class="btn" id="btn-sim-void" style="width: 100%; margin-top: 1rem;">Enter Void Whirlpool</button>
+                        <div id="sim-void-log" style="font-size: 0.85rem; color: var(--muted); margin-top: 0.5rem; min-height: 1.2rem;"></div>
                     </div>
                 </div>
             </div>
@@ -236,7 +251,6 @@
                     </div>
                 </div>
 
-                <!-- Hidden container for the Fishing Renderer to hook into -->
                 <div id="fishing-container"></div>
             </div>
 
@@ -258,15 +272,12 @@
         import { createRng } from './js/util/rng.js';
         import { getRarityColor } from './js/util/utils.js';
 
-        // ==========================================
-        // SYSTEM INIT & TAB LOGIC
-        // ==========================================
         let gameLoopId = null;
         let lastTime = 0;
         let isFishing = false;
-        
         let testPlayer = null;
 
+        // Boot system
         document.getElementById('btn-init').addEventListener('click', async () => {
             await AudioEngine.init();
             AudioEngine.setMusicVolume(0.5);
@@ -283,6 +294,7 @@
             document.getElementById('main-content').style.filter = 'none';
         });
 
+        // Tab selection
         document.querySelectorAll('.tab-btn').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -295,12 +307,13 @@
         });
 
         // ==========================================
-        // TAB 1: ART FORGE MOCKS
+        // TAB 1: ART PREVIEWS
         // ==========================================
         document.getElementById('btn-art-fungal').onclick = () => renderPoiMock('fungal');
         document.getElementById('btn-art-crystal').onclick = () => renderPoiMock('crystal');
         document.getElementById('btn-art-frozen').onclick = () => renderPoiMock('frozen');
-        document.getElementById('btn-art-lava').onclick = () => renderPoiMock('lava'); // <-- NEW
+        document.getElementById('btn-art-lava').onclick = () => renderPoiMock('lava');
+        document.getElementById('btn-art-void').onclick = () => renderPoiMock('void');
 
         function renderPoiMock(biomeId) {
             if(AudioEngine.isInitialized) SFX.playUIHover();
@@ -309,8 +322,10 @@
                 art = generatePoiArt({ poiId: 'myconid_colony', rng: createRng(Date.now()) });
             } else if (biomeId === 'crystal') {
                 art = generatePoiArt({ poiId: 'crystal_museum', rng: createRng(Date.now()) });
-            } else if (biomeId === 'lava') { // <-- NEW
+            } else if (biomeId === 'lava') {
                 art = generatePoiArt({ poiId: 'volcanic_arena', rng: createRng(Date.now()) });
+            } else if (biomeId === 'void') {
+                art = generatePoiArt({ poiId: 'mage_tower', rng: createRng(Date.now()) });
             } else {
                 art = generateSettlementArt({ biomeId: biomeId });
             }
@@ -361,7 +376,6 @@
             img.style.display = 'inline-block';
         };
 
-        // --- NEW: VOLCANIC ART PREVIEWS ---
         let previewPhaseLava = 1;
         document.getElementById('btn-art-boss-lava').onclick = () => {
             if(AudioEngine.isInitialized) SFX.playUIHover();
@@ -371,7 +385,6 @@
             img.src = art.imageDataUrl;
             img.style.display = 'inline-block';
             document.getElementById('btn-art-boss-lava').innerText = `Ignis Serpentine (Ph ${previewPhaseLava})`;
-            
             previewPhaseLava++;
             if (previewPhaseLava > 3) previewPhaseLava = 1;
         };
@@ -385,8 +398,52 @@
             img.style.display = 'inline-block';
         };
 
+        let previewPhaseIce = 1;
+        document.getElementById('btn-art-boss-ice').onclick = () => {
+            if(AudioEngine.isInitialized) SFX.playUIHover();
+            const rng = createRng(Date.now());
+            const art = generateBossArt({ bossId: 'glacial_leviathan', rng, phase: previewPhaseIce });
+            const img = document.getElementById('preview-boss');
+            img.src = art.imageDataUrl;
+            img.style.display = 'inline-block';
+            document.getElementById('btn-art-boss-ice').innerText = `Glacial Leviathan (Ph ${previewPhaseIce})`;
+            previewPhaseIce++;
+            if (previewPhaseIce > 3) previewPhaseIce = 1;
+        };
+
+        document.getElementById('btn-art-lure-ice').onclick = () => {
+            if(AudioEngine.isInitialized) SFX.playUIHover();
+            const rng = createRng(Date.now());
+            const art = generateMythicLure({ lureId: 'glacial_hook', rng });
+            const img = document.getElementById('preview-boss'); 
+            img.src = art.imageDataUrl;
+            img.style.display = 'inline-block';
+        };
+
+        let previewPhaseVoid = 1;
+        document.getElementById('btn-art-boss-void').onclick = () => {
+            if(AudioEngine.isInitialized) SFX.playUIHover();
+            const rng = createRng(Date.now());
+            const art = generateBossArt({ bossId: 'void_bound_aboleth', rng, phase: previewPhaseVoid });
+            const img = document.getElementById('preview-boss');
+            img.src = art.imageDataUrl;
+            img.style.display = 'inline-block';
+            document.getElementById('btn-art-boss-void').innerText = `Aboleth (Ph ${previewPhaseVoid})`;
+            previewPhaseVoid++;
+            if (previewPhaseVoid > 3) previewPhaseVoid = 1;
+        };
+
+        document.getElementById('btn-art-lure-void').onclick = () => {
+            if(AudioEngine.isInitialized) SFX.playUIHover();
+            const rng = createRng(Date.now());
+            const art = generateMythicLure({ lureId: 'singularity_hook', rng });
+            const img = document.getElementById('preview-boss'); 
+            img.src = art.imageDataUrl;
+            img.style.display = 'inline-block';
+        };
+
         // ==========================================
-        // TAB 2: POI SIMULATOR LOGIC
+        // TAB 2: POI SIMULATORS
         // ==========================================
         const progress = { fungal: 0, crystal: 0, ice: 0, lava: 0, void: 0 };
 
@@ -399,15 +456,57 @@
             if(AudioEngine.isInitialized) SFX.playGold();
             progress.fungal += 500;
             updateBar('fungal', progress.fungal, 5000, 'kg');
-            if (progress.fungal === 1500) document.getElementById('sim-fungal-log').innerText = "Milestone Reached! Received: Spores of the Deep";
-            if (progress.fungal === 5000) document.getElementById('sim-fungal-log').innerHTML = "<span style='color: #A855F7'>Quest Complete! Unlocked: The Mycelial Hook</span>";
+            const log = document.getElementById('sim-fungal-log');
+            if (progress.fungal === 1500) log.innerText = "Milestone Reached! Received: Spores of the Deep";
+            if (progress.fungal === 5000) log.innerHTML = "<span style='color: #4ADE80'>Quest Complete! Unlocked: The Mycelial Hook</span>";
         };
 
         document.getElementById('btn-sim-crystal').onclick = () => {
             if(AudioEngine.isInitialized) SFX.playUISelect();
-            progress.crystal += 500;
+            progress.crystal += 1000;
             updateBar('crystal', progress.crystal, 10000, 'pts');
-            if (progress.crystal >= 10000) document.getElementById('sim-crystal-log').innerHTML = "<span style='color: #A855F7'>Quest Complete! Unlocked: Prismatic Geode Hook</span>";
+            const log = document.getElementById('sim-crystal-log');
+            if (progress.crystal === 3000) log.innerText = "Milestone Reached! Received: Luminescent Oil Cache";
+            if (progress.crystal === 10000) log.innerHTML = "<span style='color: #38BDF8'>Quest Complete! Unlocked: Prismatic Geode Hook</span>";
+        };
+
+        document.getElementById('btn-sim-ice').onclick = () => {
+            if(AudioEngine.isInitialized) SFX.playUISelect();
+            progress.ice += 100;
+            if (progress.ice >= 1001) {
+                document.getElementById('sim-ice-rank').innerText = 'Rank S';
+                document.getElementById('sim-ice-rank').style.color = '#22C55E';
+            } else if (progress.ice >= 701) {
+                document.getElementById('sim-ice-rank').innerText = 'Rank A';
+                document.getElementById('sim-ice-rank').style.color = '#38BDF8';
+            } else if (progress.ice >= 401) {
+                document.getElementById('sim-ice-rank').innerText = 'Rank B';
+                document.getElementById('sim-ice-rank').style.color = '#A855F7';
+            } else if (progress.ice >= 151) {
+                document.getElementById('sim-ice-rank').innerText = 'Rank C';
+                document.getElementById('sim-ice-rank').style.color = '#F59E0B';
+            }
+            updateBar('ice', progress.ice, 1001, 'pts');
+            const log = document.getElementById('sim-ice-log');
+            if (progress.ice === 500) log.innerText = "Vault Tier increased! Higher catalog of gears available.";
+            if (progress.ice >= 1001) log.innerHTML = "<span style='color: #60A5FA'>Rank S achieved! Unlocked: The Glacial Hook</span>";
+        };
+
+        document.getElementById('btn-sim-lava').onclick = () => {
+            if(AudioEngine.isInitialized) SFX.playUISelect();
+            progress.lava += 1;
+            updateBar('lava', progress.lava, 10, 'Rounds');
+            const log = document.getElementById('sim-lava-log');
+            if (progress.lava === 10) log.innerHTML = "<span style='color: #EF4444'>Arena Conquered! Unlocked: The Brimstone Hook</span>";
+        };
+
+        document.getElementById('btn-sim-void').onclick = () => {
+            if(AudioEngine.isInitialized) SFX.playUISelect();
+            progress.void += 1;
+            updateBar('void', progress.void, 5, 'Breaches');
+            const log = document.getElementById('sim-void-log');
+            if (progress.void === 4) log.innerText = "Telemetry complete! The next vortex tears open the Astral Sea.";
+            if (progress.void === 5) log.innerHTML = "<span style='color: #C084FC'>Quest Complete! Unlocked: Singularity Hook & Regulator</span>";
         };
 
         // ==========================================
@@ -453,36 +552,22 @@
         }
         document.getElementById('btn-roll-rod').addEventListener('click', rollTestRod);
 
-        function createMockBoss(id, name, stamina, speed, weight) {
-            return {
-                id: id,
-                identity: { name: name, family: 'deepsea', rarity: 'Boss' },
-                combat: { stamina: stamina, speed: speed, aggression: 0.85, hookWindowMs: 2000, optimalReel: 50 },
-                physical: { sizeTier: 'Massive', weightRange: { min: weight, max: weight } },
-                lurePrefs: { color: 0, sound: 0, light: 0, weight: 0, tolerance: 0.15 },
-                environment: { depthPref: 'Bottom-feeder' },
-                actualWeight: weight,
-                invType: 'fish',
-                art: generateDeepSea({ rng: createRng(Date.now()) }) 
-            };
-        }
-
-        const startBossFight = (bossData) => {
+        function startBossFight(bossInstance) {
             if (!AudioEngine.isInitialized) return;
-            logCombat(`Initiating Boss Encounter: ${bossData.identity.name}...`);
+            logCombat(`Initiating Boss Encounter: ${bossInstance.identity.name}...`);
             
             updateTestPlayerStats();
             const effStats = PlayerEngine.getEffectiveStats(testPlayer);
             
-            FishingEngine.startCast(effStats, testPlayer.stats.stamina, [bossData], 50, 480);
+            // Re-trigger standard setups
+            FishingEngine.startCast(effStats, testPlayer.stats.stamina, [bossInstance], 50, 480);
             
-            // --- NEW: HARNESS BOSS CALLBACK ---
             FishingEngine.onBossStrike = (amount, reason) => {
                 logCombat(`[BOSS STRIKE] ${reason} dealt ${amount} hull damage!`);
             };
             
             FishingEngine.phase = 'BITE';
-            FishingEngine.fishData = bossData;
+            FishingEngine.fishData = bossInstance;
             FishingEngine.hookTimerMs = 5000;
 
             document.getElementById('fishing-container').style.display = 'block';
@@ -492,7 +577,7 @@
             lastTime = performance.now();
             if (gameLoopId) cancelAnimationFrame(gameLoopId);
             gameLoopId = requestAnimationFrame(combatLoop);
-        };
+        }
 
         document.getElementById('btn-fight-fungal').onclick = () => {
             const bossData = generateFishData({ bossId: 'vesper_bloom_leviathan', seed: Date.now() });
@@ -500,14 +585,29 @@
             startBossFight(bossInstance);
         };
         
-        document.getElementById('btn-fight-crystal').onclick = () => startBossFight(createMockBoss('boss_crystal', 'Geode Monarch', 300, 65, 550));
-        document.getElementById('btn-fight-frozen').onclick = () => startBossFight(createMockBoss('boss_frozen', 'Glacial Leviathan', 360, 50, 2000));
+        document.getElementById('btn-fight-crystal').onclick = () => {
+            const bossData = generateFishData({ bossId: 'geode_monarch', seed: Date.now() });
+            const bossInstance = generateFishInstance(bossData, createRng(Date.now()));
+            startBossFight(bossInstance);
+        };
+
+        document.getElementById('btn-fight-frozen').onclick = () => {
+            const bossData = generateFishData({ bossId: 'glacial_leviathan', seed: Date.now() });
+            const bossInstance = generateFishInstance(bossData, createRng(Date.now()));
+            startBossFight(bossInstance);
+        };
+
         document.getElementById('btn-fight-lava').onclick = () => {
             const bossData = generateFishData({ bossId: 'ignis_gorged_serpentine', seed: Date.now() });
             const bossInstance = generateFishInstance(bossData, createRng(Date.now()));
             startBossFight(bossInstance);
         };
-        document.getElementById('btn-fight-void').onclick = () => startBossFight(createMockBoss('boss_void', 'Void-Bound Aboleth', 380, 55, 2800));
+
+        document.getElementById('btn-fight-void').onclick = () => {
+            const bossData = generateFishData({ bossId: 'void_bound_aboleth', seed: Date.now() });
+            const bossInstance = generateFishInstance(bossData, createRng(Date.now()));
+            startBossFight(bossInstance);
+        };
 
         let isReeling = false;
         window.addEventListener('mousedown', (e) => { 

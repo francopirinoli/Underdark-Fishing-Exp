@@ -552,6 +552,377 @@ export function generateBossArt(options = {}) {
         }
     }
 
+// ==========================================
+    // BOSS 4: THE GLACIAL LEVIATHAN (Frozen)
+    // ==========================================
+    else if (bossId === 'glacial_leviathan') {
+        const cx = 32, cy = 32;
+        
+        // 3-Phase Dynamic Palette (Shifted to highly contrasting, icy tones)
+        let pal;
+        if (phase === 1) { 
+            pal = { void: '#020617', dark: '#0F172A', core: '#0284C7', mid: '#38BDF8', light: '#7DD3FC', frost: '#E0F2FE', white: '#FFFFFF' };
+        } else if (phase === 2) { 
+            pal = { void: '#0F172A', dark: '#0284C7', core: '#38BDF8', mid: '#7DD3FC', light: '#BAE6FD', frost: '#F0F9FF', white: '#FFFFFF' };
+        } else { // Phase 3: The Iceberg
+            pal = { void: '#0284C7', dark: '#38BDF8', core: '#7DD3FC', mid: '#BAE6FD', light: '#E0F2FE', frost: '#F8FAFC', white: '#FFFFFF' };
+        }
+        
+        const { void: cVoid, dark: cDark, core: cCore, mid: cMid, light: cLight, frost: cFrost, white: cWhite } = pal;
+
+        // 1. HELPER: DRAW ANGULAR ICE SHARDS (Fins and Tail)
+        const drawShard = (startX, startY, len, dx, dy, thick) => {
+            for (let i = 0; i < len; i++) {
+                const px = Math.round(startX + dx * i);
+                const py = Math.round(startY + dy * i);
+                const w = Math.max(1, thick - Math.floor((i / len) * thick)); // Taper to a point
+                
+                for (let j = -w; j <= w; j++) {
+                    let c = cMid;
+                    if (j === -w) c = cFrost;
+                    if (j === w) c = cDark;
+                    if (i > len - 4) c = cWhite; // Sharp, glaring tips
+                    
+                    // Draw perpendicular to the angle for thickness
+                    forcePixel(px + j * Math.abs(Math.round(dy)), py + j * Math.abs(Math.round(dx)), c); 
+                    forcePixel(px + j, py + j, c); // Fill gaps
+                }
+            }
+        };
+
+        // Tail Flukes (Sharp jagged ice spears)
+        drawShard(20, cy, 14, -1, -0.8, 4); // Top tail
+        drawShard(20, cy, 14, -1, 0.8, 3);  // Bottom tail
+        drawShard(24, cy, 18, -1, 0, 2);    // Center spike
+
+        // Pectoral Fins (Sweeping down and forward)
+        drawShard(38, cy + 6, 16, -0.5, 1, 4); // Main pec
+        drawShard(46, cy + 8, 10, -0.2, 1, 2); // Secondary pec
+
+        // Dorsal Spikes (Massive iceberg crown)
+        drawShard(32, cy - 8, 12, -0.3, -1, 3);
+        drawShard(38, cy - 8, 15, 0, -1, 4);
+        drawShard(44, cy - 6, 10, 0.2, -1, 2);
+
+        // 2. CORE ANGULAR BODY (Wedge-based math instead of organic sine curves)
+        for (let x = 16; x <= 54; x++) {
+            let topY = cy, botY = cy;
+            
+            if (x < 36) { // Back half tapering to tail
+                topY = cy - Math.floor((x - 16) * 0.6);
+                botY = cy + Math.floor((x - 16) * 0.5);
+            } else if (x < 48) { // Massive chest / jaw base
+                topY = cy - 12 + Math.floor((x - 36) * 0.2);
+                botY = cy + 10 + Math.floor((x - 36) * 0.4);
+            } else { // Snout tapering to a sharp point
+                topY = cy - 9 + Math.floor((x - 48) * 1.5);
+                botY = cy + 14 - Math.floor((x - 48) * 2.0);
+            }
+
+            // Jaw gap
+            const isMaw = x > 46 && x < 54;
+            let mawTop = cy, mawBot = cy;
+            if (isMaw) {
+                mawTop = cy + 2 + Math.floor((x - 46) * 0.5);
+                mawBot = cy + 8 + Math.floor((x - 46) * 0.2);
+            }
+
+            for (let y = topY; y <= botY; y++) {
+                if (isMaw && y > mawTop && y < mawBot) continue; // Hollow mouth
+
+                let c = cCore;
+                
+                // Crystalline Facets (Diagonal banding)
+                if ((x - y) % 8 < 3) c = cMid;
+                if ((x + y) % 10 < 3) c = cDark;
+                
+                // Deep transparent-looking voids and cracks
+                if ((x * 3 + y * 5) % 17 === 0) c = cVoid; 
+                if ((x * y) % 23 === 0) c = cWhite; // Hairline stress fractures
+
+                // Edges catch light
+                if (y === topY || y === topY + 1) c = cFrost;
+                if (y === botY) c = cDark;
+                if (y === botY - 1) c = cMid;
+
+                // Thick Snow accumulations on flat surfaces
+                if (y === topY + 2 && rng.chance(0.6)) c = cWhite;
+
+                // Phase 2 Glowing Cracks pulsing with energy
+                if (phase >= 2 && (x * y) % 29 === 0) c = cLight;
+
+                forcePixel(x, y, c);
+            }
+
+            // Jagged Icicle Teeth inside the maw
+            if (isMaw) {
+                if (x % 2 === 0) {
+                    forcePixel(x, mawTop, cWhite);
+                    forcePixel(x, mawBot, cFrost);
+                }
+            }
+        }
+
+        // 3. EYE
+        const eyeX = 46;
+        const eyeY = cy - 4;
+        forcePixel(eyeX, eyeY, cWhite);
+        forcePixel(eyeX + 1, eyeY, cWhite);
+        forcePixel(eyeX - 1, eyeY, cLight);
+        forcePixel(eyeX, eyeY - 1, cVoid); // Angry, sunken brow
+        
+        // Cold energy trailing back from the eye
+        if (phase >= 2) {
+            forcePixel(eyeX - 2, eyeY, cLight);
+            forcePixel(eyeX - 3, eyeY - 1, cMid);
+            forcePixel(eyeX - 4, eyeY - 1, cDark);
+        }
+
+        // 4. PHASE 3: THE DEEP FREEZE (Solid Iceberg Encasement)
+        if (phase === 3) {
+            for (let y = 4; y < GRID_SIZE - 4; y++) {
+                for (let x = 4; x < GRID_SIZE - 4; x++) {
+                    // Angular Diamond/Hexagon bounding box
+                    const dx = Math.abs(x - 34);
+                    const dy = Math.abs(y - 32);
+                    const isInsideIce = (dx * 0.8 + dy < 24) && (dx < 22) && (dy < 20);
+
+                    if (isInsideIce) {
+                        const current = grid[y][x];
+                        let iceC = cMid;
+                        
+                        // Crystalline facets intersecting the ice block
+                        if ((x - y) % 12 < 2) iceC = cLight;
+                        if ((x + y) % 15 < 3) iceC = cFrost;
+                        if ((x * 2 + y * 3) % 23 === 0) iceC = cWhite; // Sharp internal fractures
+                        
+                        // Glowing white edges of the iceberg
+                        if (dx * 0.8 + dy >= 22 || dx >= 20 || dy >= 18) iceC = cWhite;
+
+                        // "Transparency" Illusion Logic:
+                        // If there is fish underneath, let the dark/core parts bleed through slightly
+                        if (current && current !== 'AMBIENT' && current !== cWhite && current !== cFrost) {
+                            // 50% checkerboard to draw ice over the fish, giving a frosted glass look
+                            if ((x + y) % 2 === 0) {
+                                grid[y][x] = iceC;
+                            } else {
+                                // Lighten the actual fish pixels beneath the ice
+                                if (current === cVoid) grid[y][x] = cDark;
+                                else if (current === cDark) grid[y][x] = cCore;
+                            }
+                        } else {
+                            // No fish here, just solid ice block
+                            grid[y][x] = iceC;
+                        }
+                    }
+                }
+            }
+        }
+
+        // 5. AMBIENT SNOW/ICE PARTICLES
+        const auraParticles = phase === 1 ? 30 : (phase === 2 ? 80 : 40);
+        for (let i = 0; i < auraParticles; i++) {
+            const px = rng.int(2, GRID_SIZE - 2);
+            const py = rng.int(2, GRID_SIZE - 2);
+            if (!grid[py][px]) {
+                grid[py][px] = 'AMBIENT';
+                forcePixel(px, py, rng.chance(0.3) ? cWhite : (rng.chance(0.5) ? cFrost : cLight));
+            }
+        }
+    }
+
+    // ==========================================
+    // BOSS 5: THE VOID-BOUND ABOLETH (Deep Sea)
+    // ==========================================
+    else if (bossId === 'void_bound_aboleth') {
+        // 3-Phase Dynamic Palette
+        let pal;
+        if (phase === 1) { 
+            pal = { body: '#0F172A', bodyHigh: '#1E293B', bodyDark: '#020617', glyph: '#A855F7', eye: '#22D3EE', core: '#FFFFFF' };
+        } else if (phase === 2) { 
+            pal = { body: '#1E1B4B', bodyHigh: '#312E81', bodyDark: '#09090B', glyph: '#E879F9', eye: '#FFFFFF', core: '#A855F7' };
+        } else { 
+            pal = { body: '#312E81', bodyHigh: '#4C1D95', bodyDark: '#1E1B4B', glyph: '#FFFFFF', eye: '#22D3EE', core: '#E2E8F0' };
+        }
+        
+        const { body, bodyHigh, bodyDark, glyph, eye, core } = pal;
+
+        // 1. BEZIER TENTACLE HELPER
+        const drawTentacle = (startX, startY, ctrlX, ctrlY, endX, endY, baseR, isFront) => {
+            const tSteps = 45;
+            for (let i = 0; i <= tSteps; i++) {
+                const t = i / tSteps;
+                // Quadratic Bezier curve
+                let px = Math.pow(1-t, 2)*startX + 2*(1-t)*t*ctrlX + Math.pow(t, 2)*endX;
+                let py = Math.pow(1-t, 2)*startY + 2*(1-t)*t*ctrlY + Math.pow(t, 2)*endY;
+                
+                // Add an organic sine wave to the tentacle
+                const wave = Math.sin(t * Math.PI * 6) * 1.5;
+                py += wave;
+                
+                const r = baseR * (1 - Math.pow(t, 1.2)) + 0.5;
+                
+                for(let dy = -Math.ceil(r); dy <= Math.ceil(r); dy++) {
+                    const tw = Math.floor(Math.sqrt(r*r - dy*dy));
+                    for(let dx = -tw; dx <= tw; dx++) {
+                        let c = isFront ? body : bodyDark;
+                        if (isFront && dy < 0) c = bodyHigh;
+                        if (isFront && dy === Math.ceil(r) - 1) c = bodyDark; // bottom shadow
+                        
+                        // Suction cups / Glyphs along the bottom edge
+                        if (i % 4 === 0 && dy === Math.ceil(r) - 1) {
+                            c = isFront ? glyph : body;
+                        }
+                        
+                        if (isFront) {
+                            forcePixel(px + dx, py + dy, c);
+                        } else {
+                            // Back tentacles only draw if they aren't overwriting the body
+                            setPixel(px + dx, py + dy, c);
+                        }
+                    }
+                }
+            }
+        };
+
+        // 2. DRAW BACK TENTACLES (Behind the body)
+        // Top Back: Sweeps up and left
+        drawTentacle(36, 18, 20, 5, 8, 8, 4, false);
+        // Bottom Back: Sweeps down and left
+        drawTentacle(36, 30, 25, 45, 12, 58, 4, false);
+
+        // 3. THE S-CURVE SPINE
+        const P0 = {x: 42, y: 22}; // Bulky Head
+        const P1 = {x: 5,  y: 35}; // Mid-body curve
+        const P2 = {x: 46, y: 56}; // Sweeping Tail
+        
+        // Draw Tail Flukes first so they tuck under the body
+        for(let i = 0; i < 14; i++) {
+            const spread = i * 0.8;
+            const fx = P2.x + i;
+            forcePixel(fx, P2.y - spread, bodyHigh);
+            forcePixel(fx, P2.y - spread + 1, body);
+            forcePixel(fx, P2.y + spread, bodyDark);
+            forcePixel(fx, P2.y + spread - 1, body);
+            // Fill the fin web
+            for(let fy = -Math.floor(spread) + 2; fy < Math.floor(spread) - 1; fy++) {
+                forcePixel(fx, P2.y + fy, i % 3 === 0 ? bodyDark : body);
+            }
+        }
+
+        // Draw Main Body (From tail to head so the head overlaps)
+        const spineSteps = 50;
+        for (let i = spineSteps; i >= 0; i--) {
+            const t = i / spineSteps;
+            const px = Math.pow(1-t, 2)*P0.x + 2*(1-t)*t*P1.x + Math.pow(t, 2)*P2.x;
+            const py = Math.pow(1-t, 2)*P0.y + 2*(1-t)*t*P1.y + Math.pow(t, 2)*P2.y;
+            
+            // Mass distribution: Massive head/torso, tapering sharply at the tail
+            let r = 9 * (1 - Math.pow(t, 1.2)) + 1; 
+            if (t < 0.15) r = 9; // Locks the head size
+            
+            for(let dy = -Math.ceil(r); dy <= Math.ceil(r); dy++) {
+                const tw = Math.floor(Math.sqrt(r*r - dy*dy));
+                for(let dx = -tw; dx <= tw; dx++) {
+                    let c = body;
+                    if (dy < -r * 0.4) c = bodyHigh;
+                    if (dy > r * 0.4) c = bodyDark;
+                    
+                    // Texture & Slime Mottling
+                    if ((Math.round(px) + Math.round(py)) % 5 === 0 && dy < 0) c = bodyHigh;
+                    
+                    // Alien Glyphs on the flank
+                    if (t > 0.15 && t < 0.8 && dy === 0 && Math.round(px) % 4 === 0) c = glyph;
+                    
+                    // Phase 3: Spatial Tear in the chest cavity
+                    if (phase === 3 && t > 0.15 && t < 0.35) {
+                        const tearDist = Math.abs(dx) + Math.abs(dy);
+                        if (tearDist < r * 0.7) {
+                            c = (dx + dy) % 2 === 0 ? core : glyph;
+                        }
+                    }
+                    
+                    forcePixel(px + dx, py + dy, c);
+                }
+            }
+            
+            // Jagged Dorsal Spines
+            if (t > 0.1 && t < 0.8 && i % 4 === 0) {
+                const spineH = Math.max(2, Math.floor(r * 0.8));
+                for(let s = 1; s <= spineH; s++) {
+                    forcePixel(px, py - r - s, bodyDark);
+                    forcePixel(px - 1, py - r - s, bodyHigh);
+                    if (s === spineH) forcePixel(px, py - r - s, glyph); // Glowing spine tips
+                }
+            }
+        }
+
+        // 4. DRAW FRONT TENTACLES
+        // Top Front: Sweeps forward then curls back
+        drawTentacle(42, 20, 60, 5, 5, 15, 4.5, true);
+        // Bottom Front: Sweeps down and forward
+        drawTentacle(40, 29, 55, 55, 18, 52, 4.5, true);
+
+        // 5. THE HEAD (3 Eyes & Maw)
+        // Eyes
+        const eyeX = 48;
+        const eyeY = 16;
+        for (let i = 0; i < 3; i++) {
+            const ey = eyeY + i * 5;
+            const ex = eyeX - Math.abs(1 - i); // Middle eye protrudes slightly
+            
+            // Deep, dark sockets
+            forcePixel(ex-1, ey, bodyDark);
+            forcePixel(ex, ey+1, bodyDark);
+            forcePixel(ex+1, ey, bodyDark);
+            forcePixel(ex, ey-1, bodyDark);
+            
+            // The Eye
+            forcePixel(ex, ey, eye);
+            forcePixel(ex+1, ey, core);
+        }
+        
+        // The Gaping Lamprey Maw
+        const mawX = 42;
+        const mawY = 30;
+        for (let dy = -3; dy <= 3; dy++) {
+            const mw = 3 - Math.abs(dy);
+            for (let dx = -mw; dx <= mw; dx++) {
+                forcePixel(mawX + dx, mawY + dy, '#000000'); // Void mouth interior
+                
+                // Fleshy red/purple rim
+                if (Math.abs(dx) === mw || Math.abs(dy) === 3) {
+                    forcePixel(mawX + dx, mawY + dy, '#9D174D'); 
+                }
+                // Inner rings of teeth
+                if (Math.abs(dx) === mw - 1 && dy % 2 === 0) {
+                    forcePixel(mawX + dx, mawY + dy, core); 
+                }
+            }
+        }
+        // Slime dripping from the maw
+        for(let i = 0; i < 3; i++) {
+            forcePixel(mawX + rng.int(-2, 2), mawY + 3 + i, bodyDark);
+        }
+
+        // 6. AMBIENT VOID AURA
+        const auraParticles = phase === 1 ? 25 : (phase === 2 ? 60 : 40);
+        for (let i = 0; i < auraParticles; i++) {
+            const px = rng.int(4, GRID_SIZE - 4);
+            const py = rng.int(4, GRID_SIZE - 4);
+            if (!grid[py][px]) {
+                grid[py][px] = 'AMBIENT';
+                const c = rng.chance(0.5) ? glyph : eye;
+                forcePixel(px, py, c);
+                // Heavy distortion aura for Phase 2/3
+                if (phase >= 2 && rng.chance(0.3)) {
+                    forcePixel(px + 1, py, c);
+                    forcePixel(px, py + 1, c);
+                }
+            }
+        }
+    }
+
     // ==========================================
     // UNIVERSAL OUTLINE PASS & RENDER
     // ==========================================

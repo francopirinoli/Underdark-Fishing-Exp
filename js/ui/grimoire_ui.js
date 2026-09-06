@@ -133,6 +133,7 @@ export const GrimoireUI = {
         const canvas = document.getElementById('grim-map-canvas');
         const world = this.gameState.world;
         const player = this.gameState.player;
+        const inAstralSea = player.endgameProgress?.abyssal?.activeAstralMap; // Declared here safely
 
         const incompleteQuests = [];
         const completeQuests = [];
@@ -206,6 +207,12 @@ export const GrimoireUI = {
         if (this.selectedMapNode.isDiscovered) {
             document.getElementById('grim-map-title').innerText = this.selectedMapNode.name;
             const b = BIOMES[this.selectedMapNode.biomeId];
+            
+            // Adjust the region subtitle label inside the Grimoire
+            const subTitleLabel = inAstralSea ? "Unstable Planar Plane" : "Global Node Network";
+            const titleHeader = document.querySelector('.grim-map-info p');
+            if (titleHeader) titleHeader.innerText = subTitleLabel;
+
             document.getElementById('grim-map-biome').innerText = b.name;
             document.getElementById('grim-map-biome').style.color = b.textColor || b.globalColor;
 
@@ -234,15 +241,31 @@ export const GrimoireUI = {
 
         const legend = document.getElementById('grim-map-legend');
         legend.innerHTML = '';
-        for (const key in BIOMES) {
-            if (key === 'hub') continue; // Skip hub in legend to save space
-            const b = BIOMES[key];
-            legend.innerHTML += `
+        
+        if (inAstralSea) {
+            // Custom Astral Sea Legend
+            legend.innerHTML = `
                 <div class="legend-item">
-                    <div class="legend-color" style="background: ${b.globalColor};"></div>
-                    <span>${b.name}</span>
+                    <div class="legend-color" style="background: #090514; border: 1px solid var(--panel-border);"></div>
+                    <span>Astral Void</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #A855F7; border: 1px solid var(--panel-border);"></div>
+                    <span>Containment Cage</span>
                 </div>
             `;
+        } else {
+            // Standard Darklake Legend
+            for (const key in BIOMES) {
+                if (key === 'hub' || key === 'astral_sea') continue; // Skip hub and secret biomes to save space
+                const b = BIOMES[key];
+                legend.innerHTML += `
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: ${b.globalColor}; border: 1px solid var(--panel-border);"></div>
+                        <span>${b.name}</span>
+                    </div>
+                `;
+            }
         }
     },
 
@@ -496,6 +519,10 @@ export const GrimoireUI = {
                     const result = DissectionEngine.dissect(item, player.stats.crafting, Date.now());
                     player.inventory.splice(invIndex, 1);
                     
+                    // --- NEW: ACHIEVEMENT TRACKING HOOK ---
+                    player.endgameProgress.ice.stats.fishDissected++;
+                    if (this.callbacks.checkAchievements) this.callbacks.checkAchievements();
+                    
                     if (!player.bestiary[item.id]) player.bestiary[item.id] = { xp: 0, caught: 0, speciesData: item };
                     const effStats = PlayerEngine.getEffectiveStats(player);
                     player.bestiary[item.id].xp += Math.round(result.knowledgeGain * effStats.economy.knowledgeXpMult);
@@ -717,11 +744,13 @@ export const GrimoireUI = {
             btnAction.onclick = () => {
                 SFX.playUISelect();
                 const effStats = PlayerEngine.getEffectiveStats(player);
-                // FIXED: Use effStats.exploration.maxHp to allow healing up to upgraded hull capacities (e.g. 140 HP)
                 if (item.id === 'cons_repair_kit') player.vitals.hp = Math.min(effStats.exploration.maxHp, player.vitals.hp + 25);
                 else if (item.id === 'cons_ration') player.vitals.rations = Math.min(20, player.vitals.rations + 1);
                 else if (item.id === 'cons_fuel_oil') player.vitals.fuel = 100;
-                
+                else if (item.id === 'cons_astral_infusion') { // Added
+                    player.vitals.hp = Math.min(effStats.exploration.maxHp, player.vitals.hp + 50);
+                    player.vitals.fuel = 100;
+                }
                 player.inventory.splice(invIndex, 1);
                 if (this.callbacks.onSave) this.callbacks.onSave();
                 this.renderCargo();
@@ -1049,7 +1078,15 @@ export const GrimoireUI = {
                 const result = craftFunc();
                 if (result) {
                     SFX.playCatchSuccess(); 
-                    this.gameState.player.inventory.push(result); // Sent to Cargo Hold!
+                    this.gameState.player.inventory.push(result); 
+                    
+                    // --- NEW: ACHIEVEMENT TRACKING HOOKS ---
+                    if (this.craftingMode === 'lure') player.endgameProgress.ice.stats.luresCrafted++;
+                    else if (this.craftingMode === 'potion') player.endgameProgress.ice.stats.potionsBrewed++;
+                    else if (this.craftingMode === 'bait') player.endgameProgress.ice.stats.baitsMashed++;
+                    
+                    if (this.callbacks.checkAchievements) this.callbacks.checkAchievements();
+
                     this.craftingBench = []; 
                     if (this.callbacks.onSave) this.callbacks.onSave();
                     this.renderTackle();
@@ -1740,12 +1777,37 @@ renderBestiary() {
                     </div>
                 `;
             } else if (activeSaga.id === 'frozen') {
+                const iceData = player.endgameProgress?.ice;
+                const points = iceData ? iceData.clubPoints : 0;
+                const rank = iceData ? iceData.clubRank : 'Rank D';
+                const hasHook = player.inventory.some(i => i.id === 'lure_glacial_hook') || (player.gear.lure && player.gear.lure.id === 'lure_glacial_hook');
+
+                let instructions = "";
+                let targetPoints = 1001; // Rank S requirement
+                let pct = Math.min(100, (points / targetPoints) * 100);
+
+                if (hasHook || rank === 'Rank S') {
+                    instructions = `
+                        <h4 style="color:#A855F7; margin:0 0 0.5rem 0; font-size:1.2rem;">THE SUMMONING</h4>
+                        <p style="margin:0; line-height:1.4;">You have attained Rank S. Guildmaster Thrumm has unlocked the Vault and granted you access to <b>The Glacial Hook</b>. Equip it and cast directly off the Anglers Club pier to awaken the Glacial Leviathan. Be warned: its freezing aura will numb your hands and drastically slow your reel.</p>
+                    `;
+                } else {
+                    instructions = `
+                        <h4 style="color:var(--gold-warn); margin:0 0 0.5rem 0; font-size:1.2rem;">ACTIVE MILESTONE</h4>
+                        <p style="margin:0 0 1rem 0; line-height:1.4;">Complete achievements across the Darklake to earn Club Points and raise your rank at the <b>Anglers Club</b>.</p>
+                        <div style="display:flex; justify-content:space-between; font-size: 1.1rem; margin-bottom: 0.3rem;">
+                            <span>Club Rank: <b style="color:var(--text-main);">${rank}</b></span>
+                            <span style="color:#60A5FA; font-weight:bold;">${points} pts</span>
+                        </div>
+                        <div class="progress-bar" style="margin-bottom:0.5rem;"><div class="progress-fill" style="width: ${pct}%; background: #60A5FA;"></div></div>
+                    `;
+                }
+
                 journalHtml = `
                     <h3 style="margin:0 0 1rem 0; color:#60A5FA; font-size:1.8rem; border-bottom: 2px solid #60A5FA; padding-bottom:0.5rem;">Saga of the Frozen Fjord</h3>
                     <p style="color:var(--text-main); font-size:1.15rem; line-height:1.5; font-style:italic; margin-bottom:1.5rem;">"The elite ice-lodge speaks of a leviathan locked inside an eternal block of black glacier ice. Only an S-Rank veteran of the Anglers Club will ever be worthy of carrying its key..."</p>
                     <div class="dashboard-group" style="border-color:#60A5FA; background:rgba(96, 165, 250, 0.05); padding:1.2rem;">
-                        <h4 style="color:var(--text-muted); margin:0 0 0.5rem 0; font-size:1.2rem;">LOCKED CHAPTER</h4>
-                        <p style="margin:0; line-height:1.4;">The Anglers Club has not yet established its lodge. Climb the other biome questlines first, or explore deeper coordinates of the Frozen Fjord.</p>
+                        ${instructions}
                     </div>
                 `;
             } else if (activeSaga.id === 'volcanic') {

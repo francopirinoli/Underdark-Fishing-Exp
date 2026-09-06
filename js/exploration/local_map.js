@@ -202,12 +202,33 @@ export function generateLocalMap(globalNode, globalSeed) {
         }
     }
 
-    // --- 4. PLACE SETTLEMENT DOCK ---
+    // --- 4. PLACE SETTLEMENT DOCK / CAGE ---
     let dockPlaced = false;
     let dockPos = { x: cx, y: cy };
 
-    // --- FIX: Include POIs so they generate a dock to interact with! ---
-    if (globalNode.hasSettlement || globalNode.poi) {
+    const isAstralSeaPortal = globalNode && globalNode.biomeId === 'astral_sea' && (globalNode.poi === 'spawn');
+    const isNormalSettlement = globalNode.hasSettlement || (globalNode.poi && globalNode.poi !== 'spawn' && globalNode.poi !== 'astral_sea' && globalNode.poi !== 'cosmic_salvage' && globalNode.biomeId !== 'astral_sea');
+
+    if (globalNode && globalNode.poi === 'astral_sea') {
+        // Place the Aboleth's containment cage directly in the center of the deep water lake!
+        const sx = cx;
+        const sy = cy;
+        for (let py = -3; py <= 2; py++) {
+            for (let px = -3; px <= 2; px++) {
+                grid[sy + py][sx + px] = TILE.DOCK;
+            }
+        }
+        // Ensure there is open deep water surrounding the cage to make it look floating
+        for (let dy = -15; dy <= 15; dy++) {
+            for (let dx = -15; dx <= 15; dx++) {
+                if (Math.hypot(dx, dy) < 15 && Math.hypot(dx, dy) > 4) {
+                    grid[sy + dy][sx + dx] = TILE.DEEP_WATER;
+                }
+            }
+        }
+        dockPos = { x: sx, y: sy };
+        dockPlaced = true;
+    } else if (isNormalSettlement || isAstralSeaPortal) { // Updated to restrict non-portal Astral nodes
         let searchRadius = 15;
         // Spiral outward looking for shallow water near land
         while (!dockPlaced && searchRadius < LOCAL_MAP_SIZE / 2 - 20) {

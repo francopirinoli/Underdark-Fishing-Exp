@@ -15,7 +15,7 @@ import { SFX } from './audio/sfx_generator.js';
 // Data & Generation
 import { PlayerEngine } from './data/player_data.js';
 import { generateNPCData } from './data/npc_data_generator.js';
-import { generateGlobalMap } from './exploration/global_map.js';
+import { generateGlobalMap, generateAstralSeaGlobalMap } from './exploration/global_map.js'; // Updated
 import { generateLocalMap, TILE, LOCAL_MAP_SIZE } from './exploration/local_map.js';
 import { BIOMES } from './exploration/biomes.js';
 import { generateFishData, generateFishInstance, getFishPoolForNode } from './data/fish_data_generator.js';
@@ -41,6 +41,7 @@ import { TournamentUI } from './ui/tournament_ui.js';
 // Events
 import { EventManager } from './events/event_manager.js';
 import { generateChest } from './art/chest_generator.js';
+import { AchievementEngine } from './data/achievement_engine.js';
 
 // --- GAME STATE ---
 let currentSaveSlot = 1; // <-- ADD THIS LINE
@@ -99,12 +100,14 @@ function initGameSystems() {
 
     GrimoireUI.init({
         onSave: () => saveCurrentState(),
-        onDeath: () => handleDeath() 
+        onDeath: () => handleDeath(),
+        checkAchievements: () => evaluateAchievements() // <-- ADD THIS LINE
     });
 
     HubUI.init({
         onSave: () => saveCurrentState(),
-        onDepart: () => resumeFromHub()
+        onDepart: () => resumeFromHub(),
+        checkAchievements: () => evaluateAchievements() // <-- NEW: Connects the shop hooks to the evaluator
     });
 
     EncounterUI.init({
@@ -135,6 +138,19 @@ function initGameSystems() {
 
     setupInputListeners();
     MenuUI.showMainMenu();
+}
+
+function evaluateAchievements() {
+    if (!player) return;
+    // Pass the number of discovered nodes to the engine
+    const newUnlocks = AchievementEngine.evaluate(player, discoveredNodes.length);
+    if (newUnlocks && newUnlocks.length > 0) {
+        newUnlocks.forEach(ach => {
+            SFX.playLevelUp(); // Triumphant sound
+            HUD.logAction(`🏆 Achievement Unlocked: ${ach.title}!`, "safe");
+        });
+        saveCurrentState(); // Save immediately when an achievement pops
+    }
 }
 
 // Automatically start the boot sequence when the script loads!
@@ -210,9 +226,48 @@ function loadExistingDescent(slot) {
     if (!player.endgameProgress.lava) {
         player.endgameProgress.lava = { currentTier: 1, endlessScore: 0, roster: [null, null, null] };
     }
+    // --- NEW: Abyssal Fallback for Older Saves ---
+    if (!player.endgameProgress.abyssal) {
+        player.endgameProgress.abyssal = { whirlpoolsEntered: 0, abolethFreed: false, hasSingularityRegulator: false, activeAstralMap: null };
+    }
+    // --- NEW: Anglers Club fallback for older saves ---
+    if (!player.endgameProgress.ice) {
+        player.endgameProgress.ice = {
+            clubPoints: 0, clubRank: 'Rank D', unlockedAchievements: [],
+            stats: {
+                totalFishCaught: 0, rareFishCaught: 0, legendaryFishCaught: 0, bossFishCaught: 0,
+                deepseaCaught: 0, jellyfishCaught: 0, predatorCaught: 0, eelCaught: 0,
+                heaviestCatch: 0, heaviestRay: 0, luresCrafted: 0, potionsBrewed: 0, baitsMashed: 0, fishDissected: 0,
+                goldEarned: 0, mostExpensiveFishSold: 0, itemsBought: 0, whirlpoolsEscaped: 0,
+                packIceBroken: 0, lavaTimeSurvived: 0, tournamentsWon: 0
+            }
+        };
+    }
 
     discoveredNodes = data.discoveredNodes || [`${data.globalX},${data.globalY}`];
-    world = generateGlobalMap(data.worldSeed, discoveredNodes); 
+    
+    // --- NEW: Load Game Map Safeguard ---
+    const inAstralSea = player.endgameProgress?.abyssal?.activeAstralMap;
+    if (inAstralSea) {
+        world = generateAstralSeaGlobalMap(data.worldSeed, discoveredNodes);
+        
+        // --- NEW: OLD SAVE FILE UPGRADE MIGRATOR ---
+        // Inspects if the active 4x4 nodes are missing our new hazard classifications
+        const hasHazards = world.nodes.flat().some(n => ['cosmic_storm', 'siren_trap', 'phantom_room'].includes(n.poi));
+        if (!hasHazards) {
+            console.log("♻️ Upgrading old Astral Sea save to include hazards...");
+            // Force-regenerate a fresh 4x4 world with hazards, spawning the player at the entrance
+            world = generateAstralSeaGlobalMap(Date.now(), ['0,0']);
+            globalX = 0;
+            globalY = 0;
+            discoveredNodes = ['0,0'];
+            player.vitals.hp = player.gear.boat.stats.maxHp; // Fully heal hull
+            player.endgameProgress.abyssal.whirlpoolsEntered = 5; // Preserve active quest state
+        }
+    } else {
+        world = generateGlobalMap(data.worldSeed, discoveredNodes);
+    }
+    
     globalX = data.globalX;
     globalY = data.globalY;
     gameDay = data.gameDay;
@@ -273,7 +328,38 @@ function saveCurrentState() {
 
 function loadLocalNode(entryDir) {
     const targetNode = world.nodes[globalY][globalX];
-    currentBiome = BIOMES[targetNode.biomeId];
+    
+    // --- NEW: ASTRAL SEA BIOME OVERRIDE ---
+    const inAstralSea = player.endgameProgress?.abyssal?.activeAstralMap;
+    if (inAstralSea) {
+        currentBiome = {
+            id: 'astral_sea',
+            name: 'The Astral Sea',
+            description: 'A fathomless violet nebula running with starlight currents and cosmic reefs.',
+            globalColor: '#090514',
+            textColor: '#C084FC',
+            palette: {
+                water: '#040209',      // Near pitch black
+                deepWater: '#000000',  // Absolute void
+                land: '#94A3B8',       // Stardust silver
+                rock: '#1E1B4B',       // Deep nebula purple
+                flora: '#22D3EE',      // Neon cyan glowing moss
+                waterGleam: '#E879F9'  // Pink/purple energy
+            }
+        };
+
+        // --- SAFETY RESCUE FOR OLD SAVES (Auto-Patcher) ---
+        // If your active node is missing a hazard, we patch it on-the-fly to prevent inactive rooms
+        if (!targetNode.poi && !(globalX === 0 && globalY === 0) && !(globalX === 3 && globalY === 3)) {
+            const tempRng = createRng(world.seed + globalX * 13 + globalY * 37);
+            targetNode.poi = tempRng.pick(['cosmic_storm', 'siren_trap', 'phantom_room', 'reef_chamber']);
+            console.log(`♻️ Auto-patched missing hazard for node [${globalX}, ${globalY}] to: ${targetNode.poi}`);
+        }
+    } else {
+        currentBiome = BIOMES[targetNode.biomeId];
+    }
+    
+    // Generate the standard local map for the active node in both worlds
     currentLocalMap = generateLocalMap(targetNode, world.seed);
 
     // Ensure the node tracks its discovered fish species
@@ -293,9 +379,23 @@ function loadLocalNode(entryDir) {
     else if (entryDir === 'e') spawnX = EDGE_OFFSET;
     else if (entryDir === 'w') spawnX = LOCAL_MAP_SIZE - EDGE_OFFSET;
     else if (entryDir === 'warp') {
-        // Spawn safely tucked into the top-left corner
-        spawnX = EDGE_OFFSET * 2;
-        spawnY = EDGE_OFFSET * 2;
+        // --- NEW: SAFE PORTAL/WARP SPAWNING PIPELINE ---
+        // Instead of spawning at a static corner [30, 30] which may be solid rock,
+        // we check the active exits of this node and spawn inside a guaranteed clear channel.
+        const exits = targetNode.exits;
+        if (exits.n) { 
+            spawnY = EDGE_OFFSET; 
+        } else if (exits.s) { 
+            spawnY = LOCAL_MAP_SIZE - EDGE_OFFSET; 
+        } else if (exits.w) { 
+            spawnX = EDGE_OFFSET; 
+        } else if (exits.e) { 
+            spawnX = LOCAL_MAP_SIZE - EDGE_OFFSET; 
+        } else {
+            // Absolute safety fallback: spawn dead center
+            spawnX = LOCAL_MAP_SIZE / 2;
+            spawnY = LOCAL_MAP_SIZE / 2;
+        }
     }
 
     const effStats = PlayerEngine.getEffectiveStats(player);
@@ -305,7 +405,8 @@ function loadLocalNode(entryDir) {
 
     // --- 1. SPAWN TREASURE CHEST ---
     currentLocalChest = null;
-    if (EventManager.Treasure.hasChest(globalX, globalY)) {
+    // Block standard chests in the Astral Sea
+    if (!inAstralSea && EventManager.Treasure.hasChest(globalX, globalY)) {
         const rng = createRng(world.seed + globalX * 10 + globalY * 100 + gameDay);
         const waterTiles =[];
         for (let y = 10; y < LOCAL_MAP_SIZE - 10; y += 4) { 
@@ -316,7 +417,7 @@ function loadLocalNode(entryDir) {
         if (waterTiles.length > 0) currentLocalChest = rng.pick(waterTiles);
     }
 
-// --- 2. SPAWN NPC BOATS (Wanderers & Tournaments) ---
+// --- 2. SPAWN NPC BOATS (Wanderers & Tournaments / Phantoms) ---
     currentLocalNPCBoats =[];
     
     // Helper to find safe deep water away from the map edges (exits)
@@ -345,58 +446,81 @@ function loadLocalNode(entryDir) {
         return spots;
     };
 
-    // A. Wandering Fisherman
+    if (inAstralSea) {
+        // Spawn Ghostly Phantom Ships in the Astral Sea
+        if (targetNode.poi === 'phantom_room') {
+            const pRng = createRng(world.seed + globalX * 5 + globalY * 13);
+            const numPhantoms = pRng.int(1, 2);
+            const spots = findSafeSpots(pRng, numPhantoms, 100, 45);
+            
+            spots.forEach((spot, idx) => {
+                const phantomNpc = { name: "Astral Phantom", race: "Human", gender: "Spore-Spawn" };
+                const phantomImg = new Image();
+                phantomImg.src = player.gear.boat.art.topDownDataUrl; // Copy of your hull
+
+                currentLocalNPCBoats.push({
+                    x: spot.x, y: spot.y, 
+                    npc: phantomNpc, 
+                    img: phantomImg, 
+                    bobOffset: pRng.int(0, 1000),
+                    isPhantom: true, // Ghostly rendering flag
+                    isTournament: false,
+                    state: 'IDLE',
+                    targetX: spot.x, targetY: spot.y,
+                    homeX: spot.x, homeY: spot.y,
+                    stunTimer: 0 // Added
+                });
+            });
+        }
+    } else {
+        // Standard Darklake Spawning
+        // A. Wandering Fisherman
         if (EventManager.Fisherman.hasFisherman(globalX, globalY)) {
             const fRng = createRng(world.seed + globalX * 7 + globalY * 11 + gameDay);
             const spots = findSafeSpots(fRng, 1, 100, 30);
             
             if (spots.length > 0) {
-                // Pass currentBiome.id for regional accuracy
-            const npc = generateNPCData({ seed: fRng.next() * 10000, biomeId: currentBiome.id });
-            const boat = generateBoatData({ seed: fRng.next() * 10000 });
-            const boatImg = new Image(); boatImg.src = boat.art.topDownDataUrl;
+                const npc = generateNPCData({ seed: fRng.next() * 10000, biomeId: currentBiome.id });
+                const boat = generateBoatData({ seed: fRng.next() * 10000 });
+                const boatImg = new Image(); boatImg.src = boat.art.topDownDataUrl;
 
-            currentLocalNPCBoats.push({
-                x: spots[0].x, y: spots[0].y, npc: npc, img: boatImg, bobOffset: fRng.int(0, 1000),
-                isTournament: false,
-                // --- FIX: Use the dedicated Wandering Stock generator ---
-                inventory: MerchantGenerator.getWanderingStock(fRng.next() * 10000, currentBiome.id, player.stats.bartering).slice(0, fRng.int(2, 4))
-            });
+                currentLocalNPCBoats.push({
+                    x: spots[0].x, y: spots[0].y, npc: npc, img: boatImg, bobOffset: fRng.int(0, 1000),
+                    isTournament: false,
+                    inventory: MerchantGenerator.getWanderingStock(fRng.next() * 10000, currentBiome.id, player.stats.bartering).slice(0, fRng.int(2, 4))
+                });
+            }
         }
-    }
 
-    // B. Fishing Tournament
+        // B. Fishing Tournament
         const activeTournament = EventManager.Tournament.getTournament(globalX, globalY);
         if (activeTournament) {
             const tRng = createRng(world.seed + globalX * 13 + globalY * 17 + gameDay);
-            // We need 4 spots: 1 Official, 3 Competitors
             const spots = findSafeSpots(tRng, 4, 120, 25);
             
             if (spots.length >= 4) {
-                // Generate the Organizer/Official with regional weightings
-            const offNpc = generateNPCData({ seed: tRng.next() * 10000, biomeId: currentBiome.id });
-            const offBoat = generateBoatData({ seed: tRng.next() * 10000 });
-            const offImg = new Image(); offImg.src = offBoat.art.topDownDataUrl;
-            
-            currentLocalNPCBoats.push({
-                x: spots[0].x, y: spots[0].y, npc: offNpc, img: offImg, bobOffset: tRng.int(0, 1000),
-                isTournament: true, tournamentRole: 'organizer'
-            });
-
-            // Generate the 3 Competitors using the saved names from the event
-            for (let i = 0; i < 3; i++) {
-                const compData = activeTournament.competitors[i];
-                // We use their saved name/race as the seed source so they look identical all day
-                const compNpc = generateNPCData({ seed: tRng.next() * 10000, race: compData.race, gender: compData.gender });
-                compNpc.name = compData.name; // Override generated name with saved name
+                const offNpc = generateNPCData({ seed: tRng.next() * 10000, biomeId: currentBiome.id });
+                const offBoat = generateBoatData({ seed: tRng.next() * 10000 });
+                const offImg = new Image(); offImg.src = offBoat.art.topDownDataUrl;
                 
-                const compBoat = generateBoatData({ seed: tRng.next() * 10000 });
-                const compImg = new Image(); compImg.src = compBoat.art.topDownDataUrl;
-
                 currentLocalNPCBoats.push({
-                    x: spots[i+1].x, y: spots[i+1].y, npc: compNpc, img: compImg, bobOffset: tRng.int(0, 1000),
-                    isTournament: true, tournamentRole: 'competitor', compIndex: i
+                    x: spots[0].x, y: spots[0].y, npc: offNpc, img: offImg, bobOffset: tRng.int(0, 1000),
+                    isTournament: true, tournamentRole: 'organizer'
                 });
+
+                for (let i = 0; i < 3; i++) {
+                    const compData = activeTournament.competitors[i];
+                    const compNpc = generateNPCData({ seed: tRng.next() * 10000, race: compData.race, gender: compData.gender });
+                    compNpc.name = compData.name;
+                    
+                    const compBoat = generateBoatData({ seed: tRng.next() * 10000 });
+                    const compImg = new Image(); compImg.src = compBoat.art.topDownDataUrl;
+
+                    currentLocalNPCBoats.push({
+                        x: spots[i+1].x, y: spots[i+1].y, npc: compNpc, img: compImg, bobOffset: tRng.int(0, 1000),
+                        isTournament: true, tournamentRole: 'competitor', compIndex: i
+                    });
+                }
             }
         }
     }
@@ -410,8 +534,7 @@ function loadLocalNode(entryDir) {
     ExplorationRenderer.initHazards(currentBiome.id, activeWeather);
     
     // Pass everything into the Engine
-    ExplorationEngine.init(spawnX, spawnY, engineStats, currentLocalMap, ExplorationEngine.heading, ExplorationEngine.velocity, currentLocalNPCBoats, currentBiome.id, activeWeather);
-    
+    ExplorationEngine.init(spawnX, spawnY, engineStats, currentLocalMap, ExplorationEngine.heading, ExplorationEngine.velocity, currentLocalNPCBoats, currentBiome.id, activeWeather, targetNode.poi); // <-- FIXED
     HUD.cacheMinimap(currentLocalMap);
 
     // --- NEW: HAZARD WARNING LOGS ---
@@ -457,6 +580,10 @@ function loadLocalNode(entryDir) {
             HUD.logAction(`Hull melting! Took ${amount} damage.`, 'danger');
         } else if (reason === "Falling Crystal") {
             HUD.logAction(`Crystal shard struck the hull! Took ${amount} damage.`, 'danger');
+        } else if (reason === "Cosmic Storm") { // Added
+            HUD.logAction(`⚠ Cosmic Storm shearing hull! Reduce throttle! Took ${amount} damage.`, 'danger');
+        } else if (reason === "Phantom Ram") { // Added
+            HUD.logAction(`💥 Smashed by a Phantom! Took ${amount} damage.`, 'danger');
         } else {
             HUD.logAction(`Collision! Hull took ${amount} damage.`, 'danger');
         }
@@ -465,7 +592,55 @@ function loadLocalNode(entryDir) {
     };
 
     // --- NEW: WHIRLPOOL TELEPORT CALLBACK ---
-    ExplorationEngine.onWhirlpoolWarp = () => {
+ExplorationEngine.onWhirlpoolWarp = () => {
+        const abyssal = player.endgameProgress.abyssal || { whirlpoolsEntered: 0, abolethFreed: false, hasSingularityRegulator: false, activeAstralMap: null, questStarted: false };
+        const hasRegulator = player.gear.boat.upgrades.engine && player.gear.boat.upgrades.engine.id === 'upg_singularity_regulator';
+        const isFifthEntry = abyssal.whirlpoolsEntered === 4;
+
+        // --- NEW: THE PLANAR SHIFT TRANSITION PIPELINE ---
+        if (isFifthEntry || hasRegulator) {
+            // 1. Back up 16x16 coordinates and discovered nodes list
+            abyssal.savedNormalX = globalX;
+            abyssal.savedNormalY = globalY;
+            abyssal.savedNormalWorldSeed = world.seed;
+            abyssal.savedNormalDiscovered = [...discoveredNodes];
+
+            // 2. Flip state flags
+            abyssal.activeAstralMap = true;
+            if (isFifthEntry) {
+                abyssal.whirlpoolsEntered = 5; // Telemetry sequence complete
+            }
+            player.endgameProgress.ice.stats.whirlpoolsEscaped++;
+            evaluateAchievements();
+
+            // 3. Rebuild global map container to the 4x4 Astral Sea grid
+            discoveredNodes = ['0,0'];
+            world = generateAstralSeaGlobalMap(world.seed, discoveredNodes);
+            
+            // 4. Set start coordinates [0,0]
+            globalX = 0;
+            globalY = 0;
+
+            SFX.playLevelUp(); // Play epic dimensional tear sound
+            HUD.logAction("🌀 PLANAR SHIFT! The gravitational shear tears your vessel out of the Darklake...", "safe");
+            HUD.logAction("Entering The Astral Sea...", "safe");
+
+            saveCurrentState();
+            loadLocalNode('warp'); // Trigger local map reload
+            return;
+        }
+
+        player.endgameProgress.ice.stats.whirlpoolsEscaped++; 
+        evaluateAchievements();
+
+        // Increment Telemetry Data towards the 5th breach if the quest is active, meeting Alistair has occurred, and the aboleth is not yet freed
+        if (abyssal.questStarted && !abyssal.abolethFreed && abyssal.whirlpoolsEntered < 4) { // Updated
+            abyssal.whirlpoolsEntered++;
+            HUD.logAction(`Telemetry compiled! (${abyssal.whirlpoolsEntered}/4)`, "warn");
+        } else if (!abyssal.questStarted) { // Added warning
+            HUD.logAction("A powerful gravitational shear washes over your hull... Alistair's arrays must be active to record this.", "warn");
+        }
+
         player.vitals.hp -= 30;
         SFX.playLineSnap();
         HUD.logAction(`Sucked into the Void! Took 30 damage and violently ejected.`, 'danger');
@@ -487,7 +662,6 @@ function loadLocalNode(entryDir) {
             }
         }
 
-        // Pick an undiscovered node, or fall back to any random node if fully explored
         const list = possibleNodes.length > 0 ? possibleNodes : allNodes;
         const target = list[Math.floor(Math.random() * list.length)];
 
@@ -501,7 +675,7 @@ function loadLocalNode(entryDir) {
         }
 
         saveCurrentState();
-        loadLocalNode('warp'); // Reloads the map with the safe spawn coordinates
+        loadLocalNode('warp'); 
     };
     
     ExplorationEngine.onZoneTransition = (dir) => {
@@ -726,14 +900,25 @@ function gameLoop(timestamp) {
         const tx = Math.floor(ExplorationEngine.x);
         const ty = Math.floor(ExplorationEngine.y);
         
-        // 1. Check for Settlement Docks
+        // 1. Check for Settlement Docks / Planar Cages
         const searchRadius = 8; 
         for (let y = Math.max(0, ty - searchRadius); y <= Math.min(LOCAL_MAP_SIZE - 1, ty + searchRadius); y++) {
             for (let x = Math.max(0, tx - searchRadius); x <= Math.min(LOCAL_MAP_SIZE - 1, tx + searchRadius); x++) {
                 if (currentLocalMap.grid[y][x] === TILE.DOCK) {
                     canInteract = true;
-                    interactMsg = "Press [E] to Dock";
-                    interactAction = enterHub;
+                    
+                    // Intercept and load the Tethering Trial when at node [3, 3] in the Astral Sea
+                    const inAstralSea = player.endgameProgress?.abyssal?.activeAstralMap;
+                    if (inAstralSea && globalX === 3 && globalY === 3) {
+                        interactMsg = "Press [E] to engage Tethering Trial";
+                        interactAction = () => {
+                            SFX.playUISelect();
+                            window.startTetheringTrial(); // Scope corrected (Added window prefix)
+                        };
+                    } else {
+                        interactMsg = "Press [E] to Dock";
+                        interactAction = enterHub;
+                    }
                     break;
                 }
             }
@@ -743,6 +928,7 @@ function gameLoop(timestamp) {
         // 2. Check for NPC Boats
         if (!canInteract && currentLocalNPCBoats.length > 0) {
             for (const npcBoat of currentLocalNPCBoats) {
+                if (npcBoat.isPhantom) continue; // Skip phantoms! They are pure combat hazards. (Added)
                 const distToBoat = Math.hypot(tx - npcBoat.x, ty - npcBoat.y);
                 if (distToBoat < 25) { 
                     canInteract = true;
@@ -792,101 +978,112 @@ function gameLoop(timestamp) {
         FishingRenderer.update(FishingEngine, dt, isReeling);
 
         if (FishingEngine.phase === 'CAUGHT') {
-            const effStats = PlayerEngine.getEffectiveStats(player);
-            if (player.inventory.length < effStats.exploration.cargoSpace) {
-                
-                const caughtFish = FishingEngine.fishData; 
-                
-                if (caughtFish.invType === 'chest_encounter') {
-                    player.inventory.push({
-                        id: `chest_${Date.now()}`,
-                        instanceId: `inst_${Date.now()}`,
-                        invType: 'chest',
-                        name: 'Sunken Chest',
-                        art: caughtFish.art, 
-                        imageDataUrl: caughtFish.art.imageDataUrl,
-                        chestSeed: caughtFish.chestSeed 
-                    });
-                    
-                    // Only clear the world-map event chest if we actually caught the event chest!
-                    if (caughtFish.isEventChest) {
-                        EventManager.Treasure.clearChest(globalX, globalY); 
-                        currentLocalChest = null;
-                        handleEndFishing("You hauled up the Sunken Chest!", "safe");
-                    } else {
-                        handleEndFishing("You salvaged a Sunken Chest from the lakebed!", "safe");
-                    }
-                    saveCurrentState();
-                }
-                else {
-                    player.inventory.push(caughtFish);
-                    
-                    if (!player.bestiary[caughtFish.id]) {
-                        const template = currentLocalFishPool.find(f => f.id === caughtFish.id) || caughtFish;
-                        player.bestiary[caughtFish.id] = { xp: 0, caught: 0, speciesData: JSON.parse(JSON.stringify(template)) };
-                    }
-                    
-                    const prevKnowledge = player.bestiary[caughtFish.id].xp;
-                    player.bestiary[caughtFish.id].caught++;
+            const caughtFish = FishingEngine.fishData; 
 
-                    const baseKnowledge = { 'Common': 10, 'Uncommon': 20, 'Rare': 40, 'Legendary': 70, 'Boss': 100 }[caughtFish.identity.rarity] || 10;
-                    let knowledgeXpGain = Math.round(baseKnowledge * effStats.economy.knowledgeXpMult);
-                    
-                    // --- FIX: Bosses automatically grant Max Knowledge (Lv.3) upon capture ---
-                    if (caughtFish.identity.rarity === 'Boss') {
-                        knowledgeXpGain = 250; // Jumps straight to 250+ XP
-                    }
-                    
-                    player.bestiary[caughtFish.id].xp += knowledgeXpGain;
-                    
-                    const newKnowledge = player.bestiary[caughtFish.id].xp;
-
-                    const targetNode = world.nodes[globalY][globalX];
-                    if (!targetNode.discoveredSpecies.includes(caughtFish.id)) {
-                        targetNode.discoveredSpecies.push(caughtFish.id);
-                    }
-
-                    player.activeQuests.forEach(q => {
-                        if (q.type === 'bounty' && !q.isComplete) {
-                            if (caughtFish.id === q.targetSpeciesId && 
-                                caughtFish.identity.rarity === q.targetRarity && 
-                                globalX === q.targetNode.x && 
-                                globalY === q.targetNode.y) {
-                                
-                                q.isComplete = true;
-                                HUD.logAction(`Bounty Complete: ${q.title}!`, "safe");
-                            }
-                        }
-                    });
-
-                    const finalXpGain = Math.round(caughtFish.economy.baseXp * effStats.economy.generalXpMult);
-                    const leveledUp = PlayerEngine.addXp(player, finalXpGain);
-                    
-                    if (leveledUp) {
-                        SFX.playLevelUp();
-                        HUD.logAction("LEVEL UP! You have unspent stat points!", "safe");
-                    }
-
-                    handleEndFishing(`Caught a ${caughtFish.identity.name} (+${finalXpGain} XP)!`, "safe");
-                    
-                    if (prevKnowledge < 100 && newKnowledge >= 100) HUD.logAction(`Bestiary Updated: ${caughtFish.identity.name} (Lv.2)`, "warn");
-                    if (prevKnowledge < 250 && newKnowledge >= 250) HUD.logAction(`Bestiary Updated: ${caughtFish.identity.name} (MAX)`, "warn");
-                    
-                    if (activeTournament && activeTournament.isPlayerParticipating && !activeTournament.isFinished) {
-                        let isRelevant = true;
-                        if (activeTournament.objectiveType === 'specialist' && caughtFish.id !== activeTournament.targetSpeciesId) {
-                            isRelevant = false;
-                        }
-                        if (isRelevant) {
-                            HUD.logAction(`Tournament Catch! Deliver it quickly!`, "warn");
-                        }
-                    }
-
-                    saveCurrentState();
-                }
+            // --- FIX: INTERCEPT CUSTOM ENCOUNTERS EARLY ---
+            if (caughtFish && (caughtFish.id === 'cage_tether' || caughtFish.id === 'cosmic_salvage_chest')) {
+                handleEndFishing("", "");
             } else {
-                handleEndFishing(`Cargo full! Released ${FishingEngine.fishData.identity.name}.`, "danger");
-            }
+                const effStats = PlayerEngine.getEffectiveStats(player);
+                if (player.inventory.length < effStats.exploration.cargoSpace) {
+                    
+                    if (caughtFish.invType === 'chest_encounter') {
+                        player.inventory.push({
+                            id: `chest_${Date.now()}`,
+                            instanceId: `inst_${Date.now()}`,
+                            invType: 'chest',
+                            name: 'Sunken Chest',
+                            art: caughtFish.art, 
+                            imageDataUrl: caughtFish.art.imageDataUrl,
+                            chestSeed: caughtFish.chestSeed 
+                        });
+                        
+                        if (caughtFish.isEventChest) {
+                            EventManager.Treasure.clearChest(globalX, globalY); 
+                            currentLocalChest = null;
+                            handleEndFishing("You hauled up the Sunken Chest!", "safe");
+                        } else {
+                            handleEndFishing("You salvaged a Sunken Chest from the lakebed!", "safe");
+                        }
+                        saveCurrentState();
+                    }
+                    else {
+                        player.inventory.push(caughtFish);
+                        
+                        const iceStats = player.endgameProgress.ice.stats;
+                        iceStats.totalFishCaught++;
+                        iceStats.heaviestCatch = Math.max(iceStats.heaviestCatch, caughtFish.actualWeight);
+                        
+                        if (caughtFish.identity.rarity === 'Rare') iceStats.rareFishCaught++;
+                        else if (caughtFish.identity.rarity === 'Legendary') iceStats.legendaryFishCaught++;
+                        else if (caughtFish.identity.rarity === 'Boss') iceStats.bossFishCaught++;
+
+                        if (caughtFish.identity.family === 'deepsea') iceStats.deepseaCaught++;
+                        else if (caughtFish.identity.family === 'jellyfish') iceStats.jellyfishCaught++;
+                        else if (caughtFish.identity.family === 'shark') iceStats.predatorCaught++;
+                        else if (caughtFish.identity.family === 'eel') iceStats.eelCaught++;
+                        else if (['ray', 'flatfish'].includes(caughtFish.identity.family)) {
+                            iceStats.heaviestRay = Math.max(iceStats.heaviestRay, caughtFish.actualWeight);
+                        }
+
+                        evaluateAchievements(); 
+                        
+                        if (!player.bestiary[caughtFish.id]) {
+                            const template = currentLocalFishPool.find(f => f.id === caughtFish.id) || caughtFish;
+                            player.bestiary[caughtFish.id] = { xp: 0, caught: 0, speciesData: JSON.parse(JSON.stringify(template)) };
+                        }
+                        
+                        const prevKnowledge = player.bestiary[caughtFish.id].xp;
+                        player.bestiary[caughtFish.id].caught++;
+
+                        const baseKnowledge = { 'Common': 10, 'Uncommon': 20, 'Rare': 40, 'Legendary': 70, 'Boss': 100 }[caughtFish.identity.rarity] || 10;
+                        let knowledgeXpGain = Math.round(baseKnowledge * effStats.economy.knowledgeXpMult);
+                        
+                        if (caughtFish.identity.rarity === 'Boss') knowledgeXpGain = 250; 
+                        player.bestiary[caughtFish.id].xp += knowledgeXpGain;
+                        
+                        const newKnowledge = player.bestiary[caughtFish.id].xp;
+                        const targetNode = world.nodes[globalY][globalX];
+                        if (!targetNode.discoveredSpecies.includes(caughtFish.id)) {
+                            targetNode.discoveredSpecies.push(caughtFish.id);
+                        }
+
+                        player.activeQuests.forEach(q => {
+                            if (q.type === 'bounty' && !q.isComplete) {
+                                if (caughtFish.id === q.targetSpeciesId && caughtFish.identity.rarity === q.targetRarity && globalX === q.targetNode.x && globalY === q.targetNode.y) {
+                                    q.isComplete = true;
+                                    HUD.logAction(`Bounty Complete: ${q.title}!`, "safe");
+                                }
+                            }
+                        });
+
+                        const finalXpGain = Math.round(caughtFish.economy.baseXp * effStats.economy.generalXpMult);
+                        const leveledUp = PlayerEngine.addXp(player, finalXpGain);
+                        
+                        if (leveledUp) {
+                            SFX.playLevelUp();
+                            HUD.logAction("LEVEL UP! You have unspent stat points!", "safe");
+                        }
+
+                        handleEndFishing(`Caught a ${caughtFish.identity.name} (+${finalXpGain} XP)!`, "safe");
+                        
+                        if (prevKnowledge < 100 && newKnowledge >= 100) HUD.logAction(`Bestiary Updated: ${caughtFish.identity.name} (Lv.2)`, "warn");
+                        if (prevKnowledge < 250 && newKnowledge >= 250) HUD.logAction(`Bestiary Updated: ${caughtFish.identity.name} (MAX)`, "warn");
+                        
+                        const activeTournament = EventManager.Tournament.getTournament(globalX, globalY);
+                        if (activeTournament && activeTournament.isPlayerParticipating && !activeTournament.isFinished) {
+                            let isRelevant = true;
+                            if (activeTournament.objectiveType === 'specialist' && caughtFish.id !== activeTournament.targetSpeciesId) {
+                                isRelevant = false;
+                            }
+                            if (isRelevant) HUD.logAction(`Tournament Catch! Deliver it quickly!`, "warn");
+                        }
+                        saveCurrentState();
+                    }
+                } else {
+                    handleEndFishing(`Cargo full! Released ${caughtFish.identity.name}.`, "danger");
+                }
+            } // Close new interception block
         }
         else if (FishingEngine.phase === 'SNAPPED') handleEndFishing("Line snapped!", "danger");
         else if (FishingEngine.phase === 'ESCAPED') handleEndFishing("The fish escaped.", "danger");
@@ -909,7 +1106,10 @@ function handleAttemptCast() {
     
     const effStats = PlayerEngine.getEffectiveStats(player);
     
-    // CRITICAL FIX: Get the true on-screen position of the boat, accounting for the UI sidebar and map edges
+    // --- NEW: DECLARE INASTRALSEA REFERENCE ---
+    const inAstralSea = player.endgameProgress?.abyssal?.activeAstralMap; // Added to fix ReferenceError
+    
+    // CRITICAL FIX: Get the true on-screen position of the boat
     const playerPxX = ExplorationEngine.x * ExplorationRenderer.TILE_SIZE;
     const playerPxY = ExplorationEngine.y * ExplorationRenderer.TILE_SIZE;
     const screenBoatX = playerPxX - ExplorationRenderer.camX;
@@ -1024,6 +1224,56 @@ function handleAttemptCast() {
                 setTimeout(() => {
                     if (currentState === STATE.FISHING && FishingEngine.phase === 'SINKING') {
                         if (!FishingEngine.evaluateBite()) handleEndFishing("The Serpentine refused to emerge.", "danger");
+                    }
+                }, 6000);
+                
+                return; 
+            }
+
+            // --- NEW: ANGLERS CLUB SUMMONING BYPASS ---
+            else if (targetNode.poi === 'anglers_club' && equippedLure && equippedLure.id === 'lure_glacial_hook') {
+                HUD.logAction("The Glacial Hook vaporizes the water. A freezing dread rises from the depths...", "warn");
+
+                const bossData = generateFishData({ bossId: 'glacial_leviathan', seed: Date.now() });
+                const bossInstance = generateFishInstance(bossData, createRng(Date.now()));
+
+                const castPool = [bossInstance];
+
+                currentState = STATE.FISHING;
+                document.getElementById('z50-action').style.display = 'flex';
+                document.getElementById('z50-action').style.background = 'transparent';
+
+                FishingEngine.startCast(effStats, player.stats.stamina, castPool, 50, gameTimeMinutes);
+                FishingRenderer.open({ lureDataUrl: equippedLure.imageDataUrl || '', biome: currentBiome, tileId: tId });
+
+                setTimeout(() => {
+                    if (currentState === STATE.FISHING && FishingEngine.phase === 'SINKING') {
+                        if (!FishingEngine.evaluateBite()) handleEndFishing("The Leviathan remained frozen.", "danger");
+                    }
+                }, 6000);
+
+                return;
+            }
+            // --- NEW: VOID-BOUND ABOLETH SUMMONING BYPASS ---
+            else if (equippedLure && equippedLure.id === 'lure_singularity_hook' && (currentBiome.id === 'astral_sea' || currentBiome.id === 'abyssal')) {
+                HUD.logAction("The Singularity Hook warps the water columns. A massive, three-eyed shadow ascends!", "warn");
+                MusicEngine.playBiome('battle', createRng(Date.now()));
+                
+                const bossData = generateFishData({ bossId: 'void_bound_aboleth', seed: Date.now() });
+                const bossInstance = generateFishInstance(bossData, createRng(Date.now()));
+                
+                const castPool = [bossInstance];
+                
+                currentState = STATE.FISHING;
+                document.getElementById('z50-action').style.display = 'flex';
+                document.getElementById('z50-action').style.background = 'transparent';
+
+                FishingEngine.startCast(effStats, player.stats.stamina, castPool, 60, gameTimeMinutes);
+                FishingRenderer.open({ lureDataUrl: equippedLure.imageDataUrl || '', biome: currentBiome, tileId: tId });
+                
+                setTimeout(() => {
+                    if (currentState === STATE.FISHING && FishingEngine.phase === 'SINKING') {
+                        if (!FishingEngine.evaluateBite()) handleEndFishing("The Aboleth slipped back into the void.", "danger");
                     }
                 }, 6000);
                 
@@ -1167,7 +1417,30 @@ function handleAttemptCast() {
             });
             // 4. Add Chest if in generous radius
             let eventChestSpawned = false;
-            if (currentLocalChest) {
+            
+            // --- NEW: COSMIC SALVAGE CHEST SPAWNING ---
+            if (inAstralSea && targetNode.poi === 'cosmic_salvage') {
+                const chestSeed = Date.now();
+                const chestArt = generateChest({ rng: createRng(chestSeed), isMimic: false });
+                currentLocalChest = { x: 256, y: 256 }; // Centered
+                
+                castPool.push({
+                    id: 'cosmic_salvage_chest',
+                    invType: 'cosmic_chest', 
+                    identity: { name: 'Cosmic Salvage Chest', family: 'Treasure', rarity: 'Legendary' },
+                    art: chestArt,
+                    chestSeed: chestSeed,
+                    combat: { stamina: 120, speed: 40, aggression: 0, hookWindowMs: 2500 },
+                    physical: { sizeTier: 'Medium', weightRange: { min: 80, max: 120 } },
+                    lurePrefs: { color: effStats.activeLure.color, sound: effStats.activeLure.sound, light: effStats.activeLure.light, weight: effStats.activeLure.weight, tolerance: 1.0 },
+                    environment: { depthPref: 'Bottom-feeder' },
+                    actualWeight: 100.0,
+                    instanceId: `inst_${Date.now()}`
+                });
+                eventChestSpawned = true;
+            }
+
+            if (!eventChestSpawned && currentLocalChest) {
                 const distToChest = Math.hypot(tx - currentLocalChest.x, ty - currentLocalChest.y);
                 if (distToChest < 60) {
                     const chestSeed = Date.now();
@@ -1264,6 +1537,100 @@ function handleAttemptCast() {
 }
 
 function handleEndFishing(msg, type) {
+    const isTether = FishingEngine.fishData && FishingEngine.fishData.id === 'cage_tether';
+    const isCosmic = FishingEngine.fishData && FishingEngine.fishData.id === 'cosmic_salvage_chest';
+
+    // A. TETHERING TRIAL COMPLETED SUCCESSFULLY
+    if (isTether && FishingEngine.phase === 'CAUGHT') {
+        FishingRenderer.close();
+        document.getElementById('z50-action').style.display = 'none';
+        currentState = STATE.EXPLORATION;
+        
+        exitAstralSea(true); // Ejects to normal map and flags abolethFreed = true
+        return;
+    }
+
+    // B. TETHERING TRIAL FAILED (Line Snapped / Timer Expired)
+    if (isTether && (FishingEngine.phase === 'SNAPPED' || FishingEngine.phase === 'ESCAPED')) {
+        player.vitals.hp -= 30; // 30 Hull Damage
+        SFX.playLineSnap();
+        
+        FishingRenderer.close();
+        document.getElementById('z50-action').style.display = 'none';
+        currentState = STATE.EXPLORATION;
+
+        HUD.logAction("The Cage discharged kinetic energy! Took 30 damage.", "danger");
+        HUD.logAction(FishingEngine.phase === 'SNAPPED' ? "Line snapped! The grid destabilized." : "Time expired! You failed to hold the tether.", "danger");
+        
+        if (player.vitals.hp <= 0) {
+            handleDeath();
+        }
+        return;
+    }
+
+    // C. COSMIC SALVAGE CHEST CAUGHT
+    if (isCosmic && FishingEngine.phase === 'CAUGHT') {
+        const rng = createRng(Date.now());
+        const goldFound = rng.int(500, 1500);
+        player.vitals.gold += goldFound;
+        
+        // --- NEW: TRACKING HOOK (Gold Earned) ---
+        player.endgameProgress.ice.stats.goldEarned += goldFound;
+        if (this.callbacks.checkAchievements) this.callbacks.checkAchievements();
+
+        HUD.logAction(`Opened Cosmic Salvage Chest! Found +${goldFound}g!`, "safe");
+        
+        // 1. Give Astral Infusion
+        const infusionImg = generateConsumable({ id: 'cons_fuel_oil', rng: createRng(Date.now()) }).imageDataUrl;
+        player.inventory.push({
+            id: 'cons_astral_infusion',
+            invType: 'consumable',
+            name: 'Astral Infusion',
+            desc: 'A glowing, celestial draught that instantly repairs 50 HP and completely refuels the lantern.',
+            basePrice: 500,
+            imageDataUrl: infusionImg
+        });
+        HUD.logAction("+1x Astral Infusion added to Cargo.", "safe");
+
+        // 2. Rare chance for "The Event Horizon" Rod (15%)
+        if (rng.chance(0.15)) {
+            // Import generators to build the visual
+            import('./data/rod_data_generator.js').then(mod => {
+                const rod = {
+                    id: 'rod_event_horizon',
+                    invType: 'rod',
+                    identity: { name: 'The Event Horizon', rarity: 'Legendary' },
+                    art: { imageDataUrl: '' }, // Rehydrated below
+                    stats: { power: 3.0, maxTension: 220, flexibility: 1.8, sensitivity: 500 },
+                    traits: [{
+                        id: 'event_horizon_power',
+                        name: 'Singularity Force',
+                        desc: '+30% Reeling Power in Abyssal biomes, and holds a permanent glowing line.',
+                        valueMult: 2.0
+                    }, {
+                        id: 'glowing_line',
+                        name: 'Luminescent Thread',
+                        desc: 'Grants a passive +20 Light to any attached lure.',
+                        valueMult: 1.15
+                    }],
+                    economy: { value: 6500 }
+                };
+                player.inventory.push(rod);
+                
+                // Rehydrate the visual
+                import('./util/art_rehydrator.js').then(rehydrator => {
+                    rehydrator.ArtRehydrator.rehydrateItem(rod);
+                    HUD.logAction(`+ ${rod.identity.name} added to Cargo!`, "safe");
+                });
+            });
+        }
+        
+        FishingRenderer.close();
+        document.getElementById('z50-action').style.display = 'none';
+        currentState = STATE.EXPLORATION;
+        return;
+    }
+
     HUD.logAction(msg, type);
     FishingRenderer.close();
     document.getElementById('z50-action').style.display = 'none';
@@ -1290,6 +1657,11 @@ function handleEndFishing(msg, type) {
             else if (lure.id === 'lure_brimstone_hook' && caughtId === 'ignis_gorged_serpentine') {
                 isMythicConsumed = true;
                 HUD.logAction(`The ${lure.name} melts into useless slag!`, "warn");
+            }
+            // --- NEW: Glacial Hook Shatter ---
+            else if (lure.id === 'lure_glacial_hook' && caughtId === 'glacial_leviathan') {
+                isMythicConsumed = true;
+                HUD.logAction(`The ${lure.name} shatters into a million frozen shards!`, "warn");
             }
         }
 
@@ -1359,6 +1731,24 @@ function handleDeath() {
 
     // 2. Process Penalties & Rescue Logic
     setTimeout(() => {
+        // --- NEW: ASTRAL SEA COLLAPSE SYSTEM ---
+        const abyssal = player.endgameProgress?.abyssal;
+        if (abyssal && abyssal.activeAstralMap) {
+            abyssal.activeAstralMap = false;
+            
+            // If they died before freeing the Aboleth, force them to retry from whirlpool 4
+            if (!abyssal.abolethFreed) {
+                abyssal.whirlpoolsEntered = 4; 
+            }
+            
+            // Restore normal world so nearest settlement search works on the 16x16 map!
+            globalX = abyssal.savedNormalX !== undefined ? abyssal.savedNormalX : world.startX;
+            globalY = abyssal.savedNormalY !== undefined ? abyssal.savedNormalY : world.startY;
+            const savedSeed = abyssal.savedNormalWorldSeed || world.seed;
+            discoveredNodes = abyssal.savedNormalDiscovered || [`${globalX},${globalY}`];
+            world = generateGlobalMap(savedSeed, discoveredNodes);
+        }
+
         // Cut gold in half
         const lostGold = Math.ceil(player.vitals.gold / 2);
         player.vitals.gold -= lostGold;
@@ -1543,16 +1933,84 @@ window.HelpCheats = function() {
     console.log(`
     🛠️ UNDERDARK FISHING - CHEAT MENU 🛠️
     --------------------------------------------------
-    TeleportToPOI('poi_name')         - 'myconid_colony', 'crystal_museum', etc.
-    GiveCheatFish(amount, 'Size')     - Fills cargo. Sizes: 'Tiny', 'Small', 'Medium', 'Large', 'Massive'
-    GiveSpecificFish('family', 'Rarity', 'Size') - e.g., GiveSpecificFish('shark', 'Legendary', 'Massive')
+    TeleportToPOI('poi_name')         - 'myconid_colony', 'crystal_museum', 'volcanic_arena', 'anglers_club'
+    ListSettlements()                 - Lists all towns and their coordinates.
+    TeleportToSettlement(id)          - Warps to a specific town.
+    GiveCheatFish(amount, 'Size')     - Fills cargo.
+    GiveSpecificFish('family', 'Rarity', 'Size')
     AddGold(amount)                   - Adds gold.
-    SetStat('statName', value)        - e.g., SetStat('fishing', 10)
-    ClearCargo()                      - Empties your inventory.
-    RefillVitals()                    - Maxes out HP, Fuel, and Rations.
+    SetStat('statName', value)        - E.g., SetStat('fishing', 10)
+    ClearCargo()                      - Empties inventory.
+    RefillVitals()                    - Maxes HP, Fuel, and Rations.
+    MaxIceAchievements()              - Instantly unlocks Rank S in the Anglers Club!
     --------------------------------------------------
     `);
     return "Cheat menu loaded.";
+};
+
+// --- NEW CHEAT: Instantly Complete The Anglers Club ---
+window.MaxIceAchievements = function() {
+    if (!player || !player.endgameProgress || !player.endgameProgress.ice) return "❌ You must start a game first!";
+    
+    const s = player.endgameProgress.ice.stats;
+    
+    // Category A: Volume & Rarity
+    s.totalFishCaught = 1000;
+    s.rareFishCaught = 10;
+    s.legendaryFishCaught = 5;
+    s.bossFishCaught = 1;
+    s.deepseaCaught = 10;
+    s.jellyfishCaught = 30;
+    
+    // Category B: Physical Feats
+    s.heaviestCatch = 1250;
+    s.predatorCaught = 10;
+    s.eelCaught = 15;
+    s.heaviestRay = 350;
+    
+    // Category C: Crafting & Knowledge
+    s.luresCrafted = 10;
+    s.potionsBrewed = 25;
+    s.baitsMashed = 15;
+    s.fishDissected = 100;
+    
+    // Cross-Quest dependencies
+    player.endgameProgress.fungal.totalCompostKg = 1000;
+    for (let i = 0; i < 20; i++) player.endgameProgress.crystal.filledSlots[`dummy_${i}`] = true;
+    
+    // Bestiary dependencies
+    let bestiaryCount = 0;
+    for (let key in player.bestiary) {
+        player.bestiary[key].xp = 250;
+        bestiaryCount++;
+    }
+    while (bestiaryCount < 10) {
+        player.bestiary[`dummy_fish_${bestiaryCount}`] = { xp: 250 };
+        bestiaryCount++;
+    }
+    
+    // Category D: Economy
+    s.goldEarned = 20000;
+    s.mostExpensiveFishSold = 550;
+    s.itemsBought = 15;
+    
+    player.safehouses["0,0"] = { hangar: [{}, {}, {}] }; // Fake hangar hoarder
+    
+    // Category E: Sailing
+    s.whirlpoolsEscaped = 3;
+    s.packIceBroken = 50;
+    s.lavaTimeSurvived = 600;
+    s.tournamentsWon = 3;
+    
+    // Trigger Evaluation
+    evaluateAchievements();
+    
+    // Force UI Refresh if currently in the Lodge
+    if (currentState === STATE.HUB && window.HubUI && window.HubUI.activeTab === 'lodge') {
+        window.HubUI.renderActiveTab();
+    }
+    
+    return "🏆 All Anglers Club stats maxed! Check The Lodge—you should now be Rank S.";
 };
 
 window.TeleportToPOI = function(poiId = 'myconid_colony') {
@@ -1731,4 +2189,89 @@ function attemptHookAndMusic() {
         }
     }
 }
+/**
+ * --- GLOBAL EXIT PIPELINE ---
+ */
+window.exitAstralSea = function(freedAboleth = false) {
+    const abyssal = player.endgameProgress?.abyssal;
+    if (!abyssal || !abyssal.activeAstralMap) return;
+
+    abyssal.activeAstralMap = false;
+    if (freedAboleth) {
+        abyssal.abolethFreed = true;
+    }
+
+    globalX = abyssal.savedNormalX !== undefined ? abyssal.savedNormalX : world.startX;
+    globalY = abyssal.savedNormalY !== undefined ? abyssal.savedNormalY : world.startY;
+    const savedSeed = abyssal.savedNormalWorldSeed || world.seed;
+    discoveredNodes = abyssal.savedNormalDiscovered || [`${globalX},${globalY}`];
+
+    world = generateGlobalMap(savedSeed, discoveredNodes);
+
+    SFX.playLevelUp(); 
+    HUD.logAction("🌀 PORTAL COLLAPSED! You are violently expelled back into the Darklake...", "warn");
+    if (freedAboleth) {
+        HUD.logAction("The Aboleth has escaped into the deep waters.", "safe");
+    } else {
+        HUD.logAction("Ejected back near the Mage Tower.", "normal");
+    }
+
+    saveCurrentState();
+    loadLocalNode('warp'); 
+};
+
+/**
+ * --- GLOBAL TETHERING TRIAL ---
+ */
+window.startTetheringTrial = function() {
+    ExplorationEngine.velocity = 0;
+    keys.forward = keys.backward = keys.left = keys.right = false;
+
+    const effStats = PlayerEngine.getEffectiveStats(player);
+    
+    currentState = STATE.FISHING;
+    document.getElementById('z50-action').style.display = 'flex';
+    document.getElementById('z50-action').style.background = 'transparent';
+
+    const cageTether = {
+        id: 'cage_tether',
+        identity: { name: 'Energy Cage', family: 'Treasure', rarity: 'Boss' },
+        combat: {
+            stamina: [99999, 99999, 99999], 
+            speed: [15, 15, 15], 
+            aggression: [0.0, 0.0, 0.0], // <-- CHANGED to 0 to disable random jumping
+            hookWindowMs: 2500,
+            optimalReel: [50, 50, 50]
+        },
+        physical: { sizeTier: 'Massive', weightRange: { min: 1000, max: 1000 } },
+        lurePrefs: { color: effStats.activeLure.color, sound: effStats.activeLure.sound, light: effStats.activeLure.light, weight: effStats.activeLure.weight, tolerance: 1.0 },
+        environment: { depthPref: 'Bottom-feeder' },
+        actualWeight: 1000.0,
+        instanceId: `inst_${Date.now()}`,
+        invType: 'cage_tether'
+    };
+
+    FishingEngine.startCast(effStats, player.stats.stamina, [cageTether], 50, gameTimeMinutes);
+    
+    FishingEngine.phase = 'FIGHT';
+    FishingEngine.fishData = cageTether;
+    FishingEngine.maxFishStamina = 99999;
+    FishingEngine.fishStamina = 99999;
+    
+    FishingEngine.tension = effStats.minigame.maxTension * 0.15; 
+    FishingEngine.maxFightTimer = 60.0; 
+    FishingEngine.fightTimer = 60.0;    
+    FishingEngine.catchProgress = 0; 
+    
+    FishingEngine.ai.state = 'INANIMATE'; // <-- CHANGED
+    FishingEngine.ai.timer = 999.0;
+
+    FishingRenderer.open({ lureDataUrl: player.gear.lure.imageDataUrl || '', biome: currentBiome, tileId: TILE.DOCK });
+    
+    FishingRenderer.elements.title.innerText = "Tethering Trial: Stabilize Energy Grid!";
+    FishingRenderer.elements.title.style.color = '#C084FC';
+    
+    HUD.logAction("🌀 TETHERED! Survive 60s in the ±8% sweet spot. Keep the line steady!", "warn"); // Text updated
+};
+
 }

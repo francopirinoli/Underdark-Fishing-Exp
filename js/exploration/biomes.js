@@ -34,6 +34,12 @@ export const BIOMES = {
         globalColor: '#0F172A', textColor: '#E0E7FF', 
         palette: { water: '#1e3a5f', deepWater: '#0d1e36', land: '#94a3b8', rock: '#64748b', flora: '#e0e7ff', waterGleam: '#38BDF8' },
         hazardChance: 0.15, stealthPenalty: 0.0, reelMultiplier: 0.70
+    },
+    astral_sea: { // Added for the endgame saga
+        id: 'astral_sea', name: 'The Astral Sea', description: 'A fathomless violet nebula running with starlight currents and cosmic reefs.',
+        globalColor: '#090514', textColor: '#C084FC', 
+        palette: { water: '#05030A', deepWater: '#000000', land: '#110E2D', rock: '#1E1B4B', flora: '#E879F9', waterGleam: '#22D3EE' },
+        hazardChance: 0.15, stealthPenalty: 0.0, reelMultiplier: 1.0
     }
 };
 

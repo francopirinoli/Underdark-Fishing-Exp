@@ -104,7 +104,21 @@ export function renderGlobalMap(canvas, globalMap, biomes, selectedNode, incompl
                     ctx.fillStyle = '#EF4444'; // Red
                     ctx.beginPath(); ctx.arc(cx, cy, tileW * 0.25, 0, Math.PI * 2); ctx.fill();
                     ctx.fillStyle = '#020617'; ctx.font = `bold ${tileH * 0.4}px "Courier New", monospace`;
-                    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('⚔️', cx, cy + 1); // Crossed Swords
+                    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('⚔️', cx, cy + 1); 
+                }
+                // --- NEW: Anglers Club Icon ---
+                else if (node.poi === 'anglers_club') {
+                    ctx.fillStyle = '#E0E7FF'; // Pale Ice Blue
+                    ctx.beginPath(); ctx.arc(cx, cy, tileW * 0.25, 0, Math.PI * 2); ctx.fill();
+                    ctx.fillStyle = '#020617'; ctx.font = `bold ${tileH * 0.4}px "Courier New", monospace`;
+                    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('❄️', cx, cy + 1); 
+                }
+                // --- NEW: Mage Tower Icon (Gravity Well) ---
+                else if (node.poi === 'mage_tower') {
+                    ctx.fillStyle = '#A855F7'; // Glowing Deep Purple
+                    ctx.beginPath(); ctx.arc(cx, cy, tileW * 0.25, 0, Math.PI * 2); ctx.fill();
+                    ctx.fillStyle = '#020617'; ctx.font = `bold ${tileH * 0.4}px "Courier New", monospace`;
+                    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('🌀', cx, cy + 1); 
                 }
                 // Standard Settlement
                 else if (node.hasSettlement) {

@@ -1,14 +1,13 @@
 /**
  * js/fishing/fishing_engine.js
  * The core physics and AI state machine for the fishing minigame.
- * V12 - Smoothed Weight Curves and Stat-Driven "Breathing" Sweet Spots.
+ * V13 - 3-Phase Boss Endurance System with Unique Mechanical Hazards.
  */
 
 import { getRandomInRange, clamp } from '../util/utils.js';
-import { SFX } from '../audio/sfx_generator.js'; // <-- ADD THIS IMPORT
+import { SFX } from '../audio/sfx_generator.js';
 
 // Define how the fish behaves physically in each state
-// V12: Widened base sweet spot ranges. The engine now adds dynamic drift on top of these.
 const BEHAVIORS = {
     HOLD:        { pullMult: 0.1, drainMult: -0.8, targetSweet: [65, 95], invincible: false }, 
     RUN:         { pullMult: 1.4, drainMult: 1.8,  targetSweet: [20, 45],  invincible: false }, 
@@ -47,7 +46,7 @@ export const FishingEngine = {
     reelPower: 50,      
     currentSweetSpot: 50, 
     targetSweetSpot: 50,  
-    currentTolerance: 8, // <-- ADD THIS LINE
+    currentTolerance: 8, 
     inSweetSpot: false,
     
     currentTimeMins: 480, 
@@ -55,11 +54,11 @@ export const FishingEngine = {
     fightTimer: 0,    
     maxFightTimer: 0,
 
-    // --- NEW: Boss Mechanics State ---
+    // --- Boss Mechanics State ---
     bossState: { heatVentTimer: 0, splitTargets: [50, 50] },
-    bossPhase: 1, // <-- NEW: Tracks active battle phase (1, 2, or 3)
+    bossPhase: 1, // Tracks active battle phase (1, 2, or 3)
     onBossStrike: null, 
-    onBossPhaseTransition: null, // <-- NEW: Emits visual cues to the UI
+    onBossPhaseTransition: null, 
     
     ai: { state: 'HOLD', timer: 0, aggression: 0, isResting: false },
 
@@ -80,8 +79,18 @@ export const FishingEngine = {
         this.playerStaminaRegen = 15 + (rawPlayerStaminaStat * 5); 
         this.playerStaminaDelayTimer = 0;
 
-        this.bossPhase = 1; // <-- NEW
-        this.onBossPhaseTransition = null; // <-- NEW
+        // Reset Boss State
+        this.bossPhase = 1; 
+        this.onBossPhaseTransition = null; 
+        this.bossState = { 
+            heatVentTimer: 0, 
+            splitTargets: [50, 50],
+            psychicRippleTimer: 0, 
+            invertTimer: 0, 
+            isControlsInverted: false,
+            spatialTearTimer: 0
+        }; 
+        this.onBossStrike = null;
 
         this.maxTension = this.playerStats.minigame.maxTension;
         this.tension = 0;
@@ -92,9 +101,6 @@ export const FishingEngine = {
         this.targetSweetSpot = 50;  
         this.currentTolerance = this.playerStats.minigame.sweetSpotTolerance; 
         this.inSweetSpot = false;
-        
-        this.bossState = { heatVentTimer: 0, splitTargets: [50, 50] }; // <-- NEW
-        this.onBossStrike = null; // <-- NEW
         
         this.phase = 'SINKING';
         this.ai.isResting = false;
@@ -107,8 +113,21 @@ export const FishingEngine = {
     scrollReelPower(delta) {
         const baseIncrement = 1.0; 
         const speedMult = this.playerStats.minigame.reelScrollSpeed || 1.0;
+        
+        // --- Glacial Squeeze Scroll Penalty ---
+        let penalty = 1.0;
+        if (this.phase === 'FIGHT' && this.fishData && this.fishData.id === 'glacial_leviathan' && this.bossPhase >= 2) {
+            penalty = 0.5; 
+        }
+        
+        // --- NEW: ABOLETH CONTROLS INVERSION ---
+        let invert = 1.0;
+        if (this.phase === 'FIGHT' && this.fishData && this.fishData.id === 'void_bound_aboleth' && this.bossState.isControlsInverted) {
+            invert = -1.0; // Flips scrolling direction (up reels, down sinks)
+        }
+        
         const normalizedDelta = delta / 100; 
-        const scrollAmount = -normalizedDelta * baseIncrement * speedMult;
+        const scrollAmount = -normalizedDelta * baseIncrement * speedMult * penalty * invert; // Updated
         this.reelPower = clamp(this.reelPower + scrollAmount, 10, 100);
     },
 
@@ -130,8 +149,7 @@ export const FishingEngine = {
         for (const fish of this.fishPool) {
             if (fish.environment.depthPref !== currentZone) continue;
 
-            // --- Bare Hook Penalty ---
-            // If the player is using a bare hook, only Common fish can bite.
+            // Bare Hook Penalty
             if (lure.isBareHook === true && fish.identity.rarity !== 'Common' && fish.invType !== 'chest_encounter') {
                 continue; 
             }
@@ -191,7 +209,7 @@ export const FishingEngine = {
             
             const isBoss = this.fishData.identity.rarity === 'Boss';
             
-            // --- NEW: Read first index if it's a boss ---
+            // Read first index if it's a boss
             const baseStamina = isBoss ? this.fishData.combat.stamina[0] : this.fishData.combat.stamina;
             this.fishStamina = baseStamina;
             this.maxFishStamina = baseStamina;
@@ -201,13 +219,13 @@ export const FishingEngine = {
             this.maxFightTimer = clamp(35 + stamBonus + weightBonus, 30, 150);
             this.fightTimer = this.maxFightTimer;
 
-            // --- NEW: Read first index of aggression for AI ---
+            // Read first index of aggression for AI
             this.ai.aggression = isBoss ? this.fishData.combat.aggression[0] : this.fishData.combat.aggression;
             this.ai.state = 'RUN';
             this.ai.timer = 2.0; 
             this.ai.isResting = false;
             
-            // Apply Leviathan Hunter: Increases Max Tension by +50 against Large/Massive fish
+            // Apply Leviathan Hunter Trait
             const traits = this.playerStats.minigame.rodTraits || [];
             if (traits.includes('leviathan_hunter') && (this.fishData.physical.sizeTier === 'Large' || this.fishData.physical.sizeTier === 'Massive')) {
                 this.maxTension = this.playerStats.minigame.maxTension + 50;
@@ -240,7 +258,26 @@ export const FishingEngine = {
 
         this.fightTimer -= dt;
         if (this.fightTimer <= 0) {
-            this.phase = 'ESCAPED';
+            // --- NEW: ABOLETH FINAL STAND FAIL LOOP ---
+            if (this.fishData && this.fishData.id === 'void_bound_aboleth' && this.bossPhase === 3) {
+                this.bossPhase = 2; // Revert to Phase 2
+                this.fishStamina = this.maxFishStamina * 0.5; // Restores 50% stamina
+                this.fightTimer = 35.0; // Give them normal time
+                this.ai.state = 'THRASH';
+                this.ai.timer = 2.0;
+                
+                SFX.playError();
+                if (typeof window !== 'undefined' && window.HUD) {
+                    window.HUD.logAction("The Aboleth absorbed the spatial tear! Healed 50% and reverted to Phase 2!", "danger");
+                }
+                return;
+            }
+
+            if (this.fishData.id === 'cage_tether') {
+                this.phase = 'CAUGHT'; 
+            } else {
+                this.phase = 'ESCAPED';
+            }
             return;
         }
 
@@ -259,16 +296,16 @@ export const FishingEngine = {
         const fishStamPct = this.fishStamina / this.maxFishStamina;
         const traits = this.playerStats.minigame.rodTraits || [];
 
-        // --- NEW: Phase 3 is a permanent, mechanical Final Stand ---
+        // Phase 3 is a permanent, mechanical Final Stand for Bosses
         if (isBoss && this.bossPhase === 3) {
             this.ai.state = 'SECOND_WIND';
             this.ai.timer = 999.0; // Infinite timer, locked in final stand mode
             return;
         }
 
-        // --- NEW: Non-Bosses enter standard rest when stamina hitting 0 ---
+        // Non-Bosses enter standard rest when stamina hitting 0
         if (this.fishStamina <= 0 && this.ai.state !== 'SECOND_WIND' && !isBoss) {
-            this.ai.state = 'SECOND_WIND'; // Standard resting
+            this.ai.state = 'SECOND_WIND'; 
             this.ai.timer = 1.5 + (this.fishData.combat.stamina / 250);
             this.targetSweetSpot = getRandomInRange(40, 60);
             return;
@@ -345,13 +382,13 @@ export const FishingEngine = {
         }
     },
 
-_applyPhysics(dt, isReeling) {
+    _applyPhysics(dt, isReeling) {
         const behavior = BEHAVIORS[this.ai.state];
         const traits = this.playerStats.minigame.rodTraits || [];
         const isBoss = this.fishData.identity.rarity === 'Boss';
         const fishStamPct = this.fishStamina / this.maxFishStamina;
 
-        // --- NEW: Dynamic Phase-Based Array Resolvers ---
+        // Dynamic Phase-Based Array Resolvers
         const getPhaseStat = (stat, phase) => {
             return Array.isArray(stat) ? stat[phase - 1] : stat;
         };
@@ -375,21 +412,58 @@ _applyPhysics(dt, isReeling) {
         const fishPenalty = (fishSpeed * 0.025) + (fishAggro * 1.5); 
         
         this.currentTolerance = Math.max(3.5, baseTol - fishPenalty);
-        
-        const isIgnis = this.fishData.id === 'ignis_gorged_serpentine';
-        const isIgnisPhase3 = (this.bossPhase === 3 && isIgnis);
-        const isIgnisPhase2 = (!isIgnisPhase3 && isIgnis && this.bossPhase === 2);
-        
-        // --- NEW: Boss Tolerance Overrides ---
-        if (this.ai.state === 'SECOND_WIND' && isBoss) {
-            if (this.fishData.id === 'vesper_bloom_leviathan') this.currentTolerance = 2.5; 
-            else if (this.fishData.id === 'geode_monarch') this.currentTolerance = 2.0; 
-            else if (isIgnisPhase3) this.currentTolerance = 2.0; 
-            else this.currentTolerance = 2.0; 
+
+        // Force a narrow, shifting sweet spot during the Tethering Trial
+        if (this.fishData.id === 'cage_tether') {
+            this.currentTolerance = 6.0; // <-- REDUCED to 6.0 (25% tighter)
+        }
+
+        // --- NEW: ABOLETH SPATIAL TEAR TOLERANCE ---
+        if (this.fishData && this.fishData.id === 'void_bound_aboleth' && this.bossPhase === 3) {
+            this.currentTolerance = 1.0; // Ultra-thin ±1% width!
         }
         
         const tol = this.currentTolerance; 
         const timeSec = Date.now() / 1000;
+
+        // --- NEW: ABOLETH PSYCHIC SHOCKWAVE LOOP ---
+        if (isBoss && this.fishData.id === 'void_bound_aboleth' && this.bossPhase === 2) {
+            this.bossState.psychicRippleTimer += dt;
+            if (this.bossState.psychicRippleTimer >= 6.0) {
+                this.bossState.psychicRippleTimer = 0;
+                this.bossState.invertTimer = 2.0; // Flips controls for 2.0s
+                this.bossState.isControlsInverted = true;
+                SFX.playUIHover(); // Distortion hum
+                if (typeof window !== 'undefined' && window.HUD) {
+                    window.HUD.logAction("🌀 PSYCHIC SHOCKWAVE! Your mind reels and controls invert!", "danger");
+                }
+            }
+            
+            if (this.bossState.invertTimer > 0) {
+                this.bossState.invertTimer -= dt;
+                if (this.bossState.invertTimer <= 0) {
+                    this.bossState.isControlsInverted = false;
+                }
+            }
+        }
+        
+        const isIgnis = this.fishData.id === 'ignis_gorged_serpentine';
+        const isIgnisPhase3 = (this.bossPhase === 3 && isIgnis);
+        const isIgnisPhase2 = (!isIgnisPhase3 && isIgnis && this.bossPhase === 2);
+
+        // Glacial Trackers
+        const isGlacial = this.fishData.id === 'glacial_leviathan';
+        const isGlacialPhase2 = (isGlacial && this.bossPhase === 2);
+        const isGlacialPhase3 = (isGlacial && this.bossPhase === 3);
+        
+        // Boss Tolerance Overrides
+        if (this.ai.state === 'SECOND_WIND' && isBoss) {
+            if (this.fishData.id === 'vesper_bloom_leviathan') this.currentTolerance = 2.5; 
+            else if (this.fishData.id === 'geode_monarch') this.currentTolerance = 2.0; 
+            else if (isIgnisPhase3) this.currentTolerance = 2.0; 
+            else if (isGlacialPhase3) this.currentTolerance = 1.0; // Paper-thin
+            else this.currentTolerance = 2.0; 
+        }
         
         // --- IGNIS SPLIT SWEET SPOT LOGIC ---
         if (isIgnisPhase3) {
@@ -407,7 +481,24 @@ _applyPhysics(dt, isReeling) {
         } 
         // STANDARD SWEET SPOT LOGIC
         else {
-            if (this.ai.state !== 'INANIMATE' && this.ai.state !== 'THRASH') {
+            // --- NEW: ABOLETH SPATIAL TEAR TELEPORTS ---
+            if (isBoss && this.fishData.id === 'void_bound_aboleth' && this.bossPhase === 3) {
+                this.bossState.spatialTearTimer += dt;
+                if (this.bossState.spatialTearTimer >= 1.5) {
+                    this.bossState.spatialTearTimer = 0;
+                    this.targetSweetSpot = getRandomInRange(15, 85); // Teleport spot
+                }
+                finalTargetSweet = this.targetSweetSpot;
+            }
+            // --- NEW: TETHERING TRIAL SMOOTH TRACKING ---
+            else if (this.fishData && this.fishData.id === 'cage_tether') {
+                // Complex waveform (Sum of Sines): Smooth but highly unpredictable wandering
+                const wave1 = Math.sin(timeSec * 0.6) * 20;
+                const wave2 = Math.cos(timeSec * 1.3) * 12;
+                const wave3 = Math.sin(timeSec * 0.3) * 15;
+                finalTargetSweet = clamp(50 + wave1 + wave2 + wave3, 10, 90);
+            }
+            else if (this.ai.state !== 'INANIMATE' && this.ai.state !== 'THRASH') {
                 let wobbleSpeed = fishSpeed * 0.025; 
                 let wobbleWidth = fishSpeed * 0.12 * fishAggro; 
                 
@@ -426,6 +517,9 @@ _applyPhysics(dt, isReeling) {
             let shiftSpeed = 1.5 + (fishSpeed * 0.015); 
             if (this.ai.state === 'BURST') shiftSpeed = 12.0;
             if (this.ai.state === 'THRASH') shiftSpeed = 8.0;
+            
+            // Allow the cage to smoothly track the sine wave without elastic lag
+            if (this.fishData && this.fishData.id === 'cage_tether') shiftSpeed = 7.0;
 
             this.currentSweetSpot += (finalTargetSweet - this.currentSweetSpot) * shiftSpeed * dt;
             this.currentSweetSpot = clamp(this.currentSweetSpot, 5, 100);
@@ -436,7 +530,7 @@ _applyPhysics(dt, isReeling) {
 
         const dragNorm = clamp(this.reelPower / 100, 0.1, 1.0);
 
-        // --- NEW: IGNIS HULL DAMAGE HAZARDS ---
+        // --- IGNIS HULL DAMAGE HAZARDS ---
         if (isIgnisPhase2) {
             if (isReeling && !this.inSweetSpot) {
                 this.bossState.heatVentTimer += dt;
@@ -462,16 +556,35 @@ _applyPhysics(dt, isReeling) {
             }
         }
 
+        // --- NEW: TETHERING TRIAL OVERRIDE ---
+        if (this.fishData && this.fishData.id === 'cage_tether') {
+            let tensionDelta = 0;
+            
+            // If reeling inside the 3% sweet spot, the line cools down securely
+            if (isReeling && this.inSweetSpot) {
+                tensionDelta = -60.0; 
+            } else {
+                // PUNISHMENT: If not reeling, or reeling outside the sweet spot, tension rockets up!
+                let diff = Math.abs(this.reelPower - this.currentSweetSpot);
+                tensionDelta = 40.0 + (diff * 2.0); // Extremely fast tension build up
+            }
+            
+            this.tension = clamp(this.tension + tensionDelta * dt, 0, this.maxTension + 5);
+            return; // Exit here! Do not run the rest of the fish-pull physics.
+        }
+
         // --- 3. PLAYER EXHAUSTION & SHOCK ABSORBER MATH ---
         const playerExhausted = this.playerStamina <= 0;
         
         let rawRodPower = this.playerStats.minigame.power;
+        const activeBiomes = this.fishData.environment.biomes || [];
         if (traits.includes('abyssal_bane') && activeBiomes.includes('abyssal')) rawRodPower *= 1.20;
         if (traits.includes('fungal_bane') && activeBiomes.includes('fungal')) rawRodPower *= 1.20;
         if (traits.includes('crystal_bane') && activeBiomes.includes('crystal')) rawRodPower *= 1.20;
         if (traits.includes('volcanic_bane') && activeBiomes.includes('volcanic')) rawRodPower *= 1.20;
         if (traits.includes('frozen_bane') && activeBiomes.includes('frozen')) rawRodPower *= 1.20;
 
+        const family = this.fishData.identity.family;
         if (traits.includes('shark_tamer') && family === 'shark') rawRodPower *= 1.25;
         if (traits.includes('eel_tamer') && family === 'eel') rawRodPower *= 1.25;
         if (traits.includes('ray_tamer') && family === 'ray') rawRodPower *= 1.25;
@@ -480,6 +593,11 @@ _applyPhysics(dt, isReeling) {
         if (traits.includes('jelly_tamer') && family === 'jellyfish') rawRodPower *= 1.25;
         if (traits.includes('deepsea_tamer') && family === 'deepsea') rawRodPower *= 1.25;
         if (traits.includes('fish_tamer') && family === 'fish') rawRodPower *= 1.25;
+
+        // Deep Freeze Brittle Line Penalty
+        if (isGlacialPhase3) {
+            rawRodPower *= 0.5; // Frozen line cuts reeling power in half
+        }
 
         const effectiveRodPower = playerExhausted ? (rawRodPower * 0.25) : rawRodPower;
         const tensionPenalty = playerExhausted ? 2.0 : 1.0; 
@@ -530,12 +648,28 @@ _applyPhysics(dt, isReeling) {
         this.tension = clamp(this.tension + tensionDelta * dt, 0, this.maxTension + 5);
 
         // --- 5. STAMINA DRAIN ---
+        
+        let activeRegen = this.playerStaminaRegen;
+        // Glacial Squeeze Numbness Penalty
+        if (isGlacialPhase2 || isGlacialPhase3) {
+            activeRegen *= 0.70; // 30% slower stamina regeneration
+        }
+
         if (isReeling) {
-            const resistance = Math.max(1.0, behavior.pullMult); 
-            const drainRate = 35 * resistance * Math.pow(dragNorm + 0.2, 1.2); 
-            this.playerStamina -= drainRate * dt;
+            // --- NEW: ABOLETH GRAVITY WELL PENALTY ---
+            if (isBoss && this.fishData.id === 'void_bound_aboleth' && this.bossPhase === 3 && !this.inSweetSpot) {
+                this.playerStamina = 0; // Instant exhaustion!
+                SFX.playError();
+                if (typeof window !== 'undefined' && window.HUD) {
+                    window.HUD.logAction("The gravity well absorbs your energy! Stamina drained!", "danger");
+                }
+            } else {
+                const resistance = Math.max(1.0, behavior.pullMult); 
+                const drainRate = 35 * resistance * Math.pow(dragNorm + 0.2, 1.2); 
+                this.playerStamina -= drainRate * dt;
+            }
         } else if (this.playerStaminaDelayTimer <= 0) {
-            this.playerStamina += this.playerStaminaRegen * dt;
+            this.playerStamina += activeRegen * dt; 
         }
         this.playerStamina = clamp(this.playerStamina, 0, this.maxPlayerStamina);
 
@@ -595,7 +729,7 @@ _applyPhysics(dt, isReeling) {
         if (this.catchProgress >= 100) {
             const isBoss = this.fishData.identity.rarity === 'Boss';
             
-            // --- NEW: 3-Phase Boss Transition Interceptor ---
+            // --- 3-Phase Boss Transition Interceptor ---
             if (isBoss && this.bossPhase < 3) {
                 this.bossPhase++;
                 this.catchProgress = 0; // Reset progress bar for next phase
@@ -607,11 +741,17 @@ _applyPhysics(dt, isReeling) {
                 this.maxFishStamina = nextStamina;
                 this.fishStamina = nextStamina;
                 
+                // --- NEW: ABOLETH PHASE 3 TRANSITION OVERRIDE ---
+                if (this.fishData.id === 'void_bound_aboleth' && this.bossPhase === 3) {
+                    this.fightTimer = 11.0; // Force exact 11s final stand
+                    this.maxFightTimer = 11.0;
+                }
+                
                 // Instantly force a thrashing state during the transition
                 this.ai.state = 'THRASH'; 
                 this.ai.timer = 2.0;
                 
-                SFX.playSplash(); // Play splash sound
+                SFX.playSplash(); 
                 
                 if (this.onBossPhaseTransition) {
                     this.onBossPhaseTransition(this.bossPhase);

@@ -382,6 +382,590 @@ export function generatePoiArt(options = {}) {
         }
     }
 
+   // ==========================================
+    // POI 4: THE ANGLERS CLUB (Frozen Fjord)
+    // ==========================================
+    else if (poiId === 'anglers_club') {
+        const cBg = '#020617';       // Void
+        const cWall = '#0F172A';     // Deep slate
+        const cIce = '#38BDF8';      // Bright ice
+        const cIceDark = '#0284C7';  // Deep blue ice shadow
+        const cSnow = '#F8FAFC';     // Pure snow
+        const cIceShad = '#94A3B8';  // Shadowed snow/ice
+        const cWater = '#082F49';    // Freezing water
+        const cFloe = '#0369A1';     // Submerged ice
+        const cLog = '#1C1917';      // Dark obsidian wood
+        const cLogHigh = '#292524';
+        const cWindow = '#FDE047';   // Warm light
+        const cWindowGlow = '#F59E0B';
+        const cSmoke = '#64748B';
+        
+        glowExclusions.push(cWindow, cWindowGlow, cSnow);
+
+        // 1. Solid Cave Background & Distant Glaciers
+        for (let y = 0; y < horizonY; y++) {
+            for (let x = 0; x < GRID_W; x++) {
+                setBg(x, y, cBg); // Solid base fill prevents glitches!
+                // Gentle stippling for distant cave wall
+                if (rng.chance((y + 10) / 80)) setBg(x, y, cWall);
+            }
+        }
+        
+        // Distant Ice Spikes / Mountains in the background
+        for (let i = 0; i < 8; i++) {
+            const px = rng.int(0, GRID_W);
+            const ph = rng.int(15, 30);
+            for (let y = 0; y < ph; y++) {
+                const pw = Math.floor((ph - y) * 0.4);
+                for (let x = -pw; x <= pw; x++) {
+                    setBg(px + x, horizonY - y, x > 0 ? cWall : cBg); 
+                }
+            }
+        }
+
+        // Hanging Icicles (Drawn on Midground to avoid erasing the sky)
+        for (let x = 0; x < GRID_W; x += rng.int(4, 10)) {
+            const iLen = rng.int(8, 25);
+            for (let y = 0; y < iLen; y++) {
+                const w = Math.max(0, Math.floor(2 - (y / iLen) * 2));
+                for (let dx = -w; dx <= w; dx++) {
+                    setMg(x + dx, y, dx <= 0 ? cIce : cIceDark); 
+                }
+            }
+        }
+
+        // 2. Frozen Water & Drifting Ice Floes
+        for (let y = horizonY; y < GRID_H; y++) {
+            for (let x = 0; x < GRID_W; x++) {
+                setBg(x, y, cWater);
+                // Subtle current lines
+                if (rng.chance(0.05) && x % 4 === 0) setBg(x, y, cFloe);
+            }
+        }
+        
+        // Large Flat Ice Floes
+        for (let i = 0; i < 30; i++) {
+            const fx = rng.int(0, GRID_W);
+            const fy = rng.int(horizonY + 2, GRID_H - 2);
+            const fw = rng.int(10, 30);
+            for (let x = 0; x < fw; x++) {
+                if (rng.chance(0.9)) {
+                    setMg(fx + x, fy, cSnow);
+                    setMg(fx + x, fy + 1, cIceDark);
+                }
+            }
+        }
+
+        // 3. The Massive Glacial Pier (Extending from the left)
+        const pierLimit = 160; 
+        for (let y = horizonY - 6; y < GRID_H; y++) {
+            for (let x = 0; x <= pierLimit; x++) {
+                // Slope the ice edge gently into the water
+                if (x > pierLimit - (y - (horizonY - 6)) * 1.5) continue;
+                
+                let c = cIceShad;
+                if (y === horizonY - 6) c = cSnow; // Pure snow on top
+                else if (y === horizonY - 5) c = cIce; // Frost edge
+                else if (x % 20 === 0 || y % 10 === 0) c = cIceDark; // Giant block seams
+                
+                setMg(x, y, c);
+            }
+        }
+
+        // 4. The Grand Obsidian Lodge
+        const lodgeX = 80;
+        const lodgeW = 100;
+        const lodgeY = horizonY - 6; // Sits exactly on the pier
+        
+        // Foundation & Walls
+        for (let y = lodgeY - 35; y <= lodgeY; y++) {
+            for (let x = -lodgeW/2; x <= lodgeW/2; x++) {
+                let c = cLog;
+                if (y % 4 === 0) c = cLogHigh; // Horizontal log grain
+                if (Math.abs(x) > lodgeW/2 - 3) c = cLogHigh; // Wall edges
+                setMg(lodgeX + x, y, c);
+            }
+        }
+
+        // Huge A-Frame Roof (Steep slope for heavy snow)
+        const roofH = 45;
+        for (let dy = 0; dy <= roofH; dy++) {
+            const rw = (lodgeW/2 + 10) - (dy * 1.2);
+            const ry = lodgeY - 35 - dy;
+            if (rw < 0) continue;
+            
+            for (let x = -rw; x <= rw; x++) {
+                let c = cLog; // Under-roof wood overhang
+                // Thick slab of snow resting on top of the shingles
+                if (Math.abs(x) > rw - 5) c = cSnow; 
+                else if (Math.abs(x) > rw - 7) c = cIceShad;
+                setMg(lodgeX + x, ry, c);
+            }
+        }
+
+        // Snow Drifts banked against the walls
+        for (let x = -lodgeW/2 - 15; x <= lodgeW/2 + 15; x++) {
+            const driftH = rng.int(4, 10);
+            for (let y = 0; y < driftH; y++) {
+                if (rng.chance(0.9)) setMg(lodgeX + x, lodgeY - y, y === driftH - 1 ? cIceShad : cSnow);
+            }
+        }
+
+        // Stone Chimney & Smoke
+        const chimX = lodgeX + 35;
+        for (let y = lodgeY - 55; y <= lodgeY - 20; y++) {
+            for (let x = -4; x <= 4; x++) {
+                setMg(chimX + x, y, (x+y)%2===0 ? cLog : cLogHigh); 
+            }
+        }
+        for (let i = 0; i < 50; i++) {
+            const sx = chimX + rng.int(-4, 20);
+            const sy = lodgeY - 55 - rng.int(2, 30);
+            if (rng.chance(0.6)) setMg(sx, sy, cSmoke);
+        }
+
+        // Warm Glowing Windows
+        const drawWindow = (wx, wy) => {
+            for (let y = 0; y < 12; y++) {
+                for (let x = 0; x < 10; x++) {
+                    let c = cWindow;
+                    if (x === 0 || x === 9 || y === 0 || y === 11 || x === 4 || x === 5 || y === 5 || y === 6) c = cLog; 
+                    setMg(wx + x, wy + y, c);
+                }
+            }
+            // Glow spilling onto the snow
+            for (let x = -5; x <= 14; x++) {
+                for (let dy = 0; dy < 4; dy++) {
+                    if (rng.chance(0.7 - dy*0.1)) setFg(wx + x, wy + 12 + dy, cWindowGlow);
+                }
+            }
+        };
+        drawWindow(lodgeX - 35, lodgeY - 20);
+        drawWindow(lodgeX + 25, lodgeY - 20);
+
+        // Solid Heavy Oak Door
+        for (let y = lodgeY - 16; y <= lodgeY; y++) {
+            for (let x = -8; x <= 8; x++) {
+                setMg(lodgeX + x, y, (x+y)%2 === 0 ? '#0F172A' : cLog);
+            }
+        }
+
+        // Giant Jawbone Trophy over the door
+        for (let i = 0; i < 12; i++) {
+            setMg(lodgeX - 12 + i, lodgeY - 24 + Math.abs(i - 6), cIce);
+            setMg(lodgeX + 12 - i, lodgeY - 24 + Math.abs(i - 6), cIce);
+            if (i % 2 === 0) {
+                setMg(lodgeX - 12 + i, lodgeY - 22 + Math.abs(i - 6), cSnow);
+                setMg(lodgeX + 12 - i, lodgeY - 22 + Math.abs(i - 6), cSnow);
+            }
+        }
+    }
+// ==========================================
+    // POI 5: THE MAGE TOWER STUDY ROOM INTERIOR
+    // ==========================================
+    else if (poiId === 'mage_tower') {
+        const cBg = '#050510';       // Deep abyssal void
+        const cStone = '#1E1B4B';    // Indigo basalt stone
+        const cStoneShad = '#090514';// Dark basalt shadow
+        const cStoneHigh = '#312E81';// Basalt light
+        const cWood = '#451A03';     // Dark mahogany wood
+        const cWoodShad = '#270E01'; // Mahogany shadow
+        const cWoodHigh = '#78350F'; // Mahogany highlight
+        const cGold = '#FBBF24';     // Burnished brass / Gold
+        const cGlow = '#C084FC';     // Lavender magical energy
+        const cGlowHigh = '#E9D5FF'; // Silver-purple glow
+        const cCyan = '#22D3EE';     // Pure cyan starlight
+        const cWhite = '#FFFFFF';    // White-hot core
+        
+        glowExclusions = [cGlow, cGlowHigh, cCyan, cGold, '#F472B6', '#38BDF8'];
+        const timeSec = Date.now() / 1000;
+
+        // --- NEW: LOCAL HELPER FOR SAFE FOREGROUND WRITING ---
+        const overFg = (x, y, color) => {
+            x = Math.round(x); y = Math.round(y);
+            if (x >= 0 && x < GRID_W && y >= 0 && y < GRID_H && !fgGrid[y][x]) fgGrid[y][x] = color;
+        };
+
+        // 1. Draw solid stone walls & background base
+        for (let y = 0; y < GRID_H; y++) {
+            for (let x = 0; x < GRID_W; x++) {
+                setBg(x, y, cStoneShad);
+            }
+        }
+
+        // 2. Arched Windows (Randomized Layout: 1 huge center window vs 2 flanking windows)
+        const windowStyle = rng.pick(['one_huge', 'two_arches']);
+        const windows = [];
+        if (windowStyle === 'one_huge') {
+            windows.push({ cx: 160, cy: 30, rx: 55, ry: 25 });
+        } else {
+            windows.push({ cx: 110, cy: 32, rx: 32, ry: 22 });
+            windows.push({ cx: 210, cy: 32, rx: 32, ry: 22 });
+        }
+
+        windows.forEach(w => {
+            // Draw background sky & space nebulae
+            for (let y = w.cy - w.ry; y <= w.cy + w.ry; y++) {
+                const progress = (y - (w.cy - w.ry)) / (w.ry * 2);
+                let rxAtY = w.rx;
+                if (y < w.cy) {
+                    const topProgress = (y - (w.cy - w.ry)) / w.ry;
+                    rxAtY = Math.floor(w.rx * Math.sqrt(1 - Math.pow(1 - topProgress, 2))); // Arched curve
+                }
+                
+                for (let x = w.cx - rxAtY; x <= w.cx + rxAtY; x++) {
+                    let c = cBg;
+                    if (Math.sin(x * 0.05 + y * 0.1) > 0.7) c = '#0F172A';
+                    if (Math.sin(x * 0.03 - y * 0.05) > 0.8) c = '#1E1B4B';
+                    setBg(x, y, c);
+                }
+            }
+            
+            // --- NEW: COHERENT, SCATTERED STARFIELD (SEEDED & NATURAL) ---
+            const numStars = rng.int(15, 25);
+            for (let i = 0; i < numStars; i++) {
+                const sx = rng.int(w.cx - w.rx + 2, w.cx + w.rx - 2);
+                const sy = rng.int(w.cy - w.ry + 2, w.cy + w.ry - 2);
+                
+                // Keep stars bound strictly inside the arched window curve
+                const progress = (sy - (w.cy - w.ry)) / w.ry;
+                let rxAtY = w.rx;
+                if (sy < w.cy) {
+                    const topProgress = (sy - (w.cy - w.ry)) / w.ry;
+                    rxAtY = Math.floor(w.rx * Math.sqrt(1 - Math.pow(1 - topProgress, 2)));
+                }
+                
+                if (Math.abs(sx - w.cx) < rxAtY - 2) {
+                    const starColor = rng.pick([cWhite, cWhite, cCyan, cGold, cGlow]);
+                    setBg(sx, sy, starColor);
+                    
+                    // Add subtle atmospheric glow to bright white stars
+                    if (starColor === cWhite && rng.chance(0.5)) {
+                        if (sx > 0) setBg(sx - 1, sy, '#0F172A');
+                        if (sx < GRID_W - 1) setBg(sx + 1, sy, '#0F172A');
+                    }
+                }
+            }
+            
+            // Arched stone window frame outlines
+            for (let y = w.cy - w.ry - 2; y <= w.cy + w.ry + 1; y++) {
+                let rxAtY = w.rx + 1;
+                if (y < w.cy) {
+                    const topProgress = (y - (w.cy - w.ry)) / w.ry;
+                    rxAtY = Math.floor((w.rx + 1) * Math.sqrt(1 - Math.pow(1 - topProgress, 2)));
+                }
+                setMg(w.cx - rxAtY, y, cStone);
+                setMg(w.cx + rxAtY, y, cStone);
+                if (y === w.cy - w.ry - 2) {
+                    for (let x = w.cx - 2; x <= w.cx + 2; x++) setMg(x, y, cStoneHigh);
+                }
+            }
+        });
+
+        // 3. Arched Support Columns & Polished Flagstone Floor
+        const columnsX = [25, 75, 245, 295];
+        columnsX.forEach(colX => {
+            for (let y = 0; y < GRID_H; y++) {
+                for (let x = -4; x <= 4; x++) {
+                    let c = cStone;
+                    if (x === -4) c = cStoneHigh;
+                    if (x === 4) c = cStoneShad;
+                    if (y % 16 === 0) c = cStoneShad; // Column seam lines
+                    setMg(colX + x, y, c);
+                }
+            }
+        });
+
+        // Flagstone floor
+        for (let y = horizonY - 5; y < GRID_H; y++) {
+            for (let x = 0; x < GRID_W; x++) {
+                let c = cStoneShad;
+                if (y === horizonY - 5) c = cStone;
+                else {
+                    const progress = (y - (horizonY - 5)) / (GRID_H - (horizonY - 5));
+                    c = progress > 0.55 ? '#04020A' : cStoneShad; // Fades to shadow
+                    if ((x + Math.floor(y * 1.5)) % 40 === 0 || y % 8 === 0) c = '#020105'; // Seams
+                }
+                setMg(x, y, c);
+            }
+        }
+
+        // 4. Large Curved Bookshelves (Framing the left and right walls)
+        const drawBookshelf = (bx, by, w, h) => {
+            for (let y = 0; y < h; y++) {
+                for (let x = 0; x < w; x++) {
+                    let c = cWood;
+                    if (x === 0 || y === 0) c = cWoodHigh;
+                    if (x === w - 1 || y === h - 1) c = cWoodShad;
+                    if (y > 0 && y % 8 === 0) c = cWoodShad; // Internal shelves
+                    setMg(bx + x, by + y, c);
+                }
+            }
+
+            const numShelves = Math.floor(h / 8);
+            const bookColors = ['#B91C1C', '#047857', '#0369A1', '#D97706', '#E2E8F0', '#475569'];
+
+            for (let s = 0; s < numShelves; s++) {
+                const sy = by + (s * 8) + 1;
+                let currentX = bx + 2;
+                while (currentX < bx + w - 3) {
+                    const bookW = rng.int(2, 4);
+                    const bookH = rng.int(4, 6);
+                    const bookCol = rng.pick(bookColors);
+                    const lean = rng.chance(0.2) && currentX < bx + w - 7; // Slanted book check
+
+                    for (let bx_off = 0; bx_off < bookW; bx_off++) {
+                        for (let by_off = 0; by_off < bookH; by_off++) {
+                            let lx = currentX + bx_off;
+                            let ly = sy + 6 - by_off;
+                            if (lean) lx += Math.floor(by_off / 2); // Shear pixels to lean right
+                            setFg(lx, ly, bookCol);
+                            if (by_off === Math.floor(bookH / 2) && rng.chance(0.3)) setFg(lx, ly, cGold); // Spine ribs
+                        }
+                    }
+                    currentX += bookW + (lean ? 3 : 1);
+                }
+            }
+        };
+
+        drawBookshelf(10, 8, 45, 48);
+        drawBookshelf(265, 8, 45, 48);
+
+        // 5. The Grand Study Desk (Central layout focus)
+        const deskX = 120;
+        const deskY = 48;
+        const deskW = 80;
+        const deskH = 12;
+
+        for (let y = 0; y < deskH; y++) {
+            for (let x = 0; x < deskW; x++) {
+                let c = cWood;
+                if (y === 0) c = cWoodHigh;
+                if (x === 0 || x === deskW - 1 || y === deskH - 1) c = cWoodShad;
+                if (y > 3 && (x < 6 || x > deskW - 7)) c = cWoodShad; // Thick pillars legs
+                setFg(deskX + x, deskY + y, c);
+            }
+        }
+
+        // 6. DESK REAGENTS & ANCIENT ARTIFACTS
+        // A. The Spellbook (Tome of Gravitational Singularity)
+        const bookX = deskX + 26;
+        const bookY = deskY - 5;
+        // Leather cover
+        for (let x = 0; x < 28; x++) setFg(bookX + x, bookY + 4, '#7F1D1D');
+        // Aged pages
+        for (let x = 1; x < 27; x++) {
+            const isLeftPage = x < 14;
+            const pageSway = isLeftPage ? Math.sin((x / 13) * Math.PI) * 2 : Math.sin(((27 - x) / 13) * Math.PI) * 2;
+            const py = bookY + 3 - Math.floor(pageSway);
+            
+            for (let dy = 0; dy < 3; dy++) {
+                let c = '#FEF08A'; 
+                if (dy === 2) c = '#CA8A04'; // Page shading
+                setFg(bookX + x, py + dy, c);
+                
+                // Glowing script lines
+                if (dy === 1 && x > 2 && x < 25 && x !== 13 && x !== 14) {
+                    if (x % 3 === 0) setFg(bookX + x, py + dy, cGlow);
+                }
+            }
+            setFg(bookX + 13, bookY + 3, cWoodShad);
+            setFg(bookX + 14, bookY + 3, cWoodShad);
+        }
+
+        // B. Left Desk Object (Procedural: Floating Orb vs Rolled Map Scrolls)
+        const leftObject = rng.pick(['orb', 'scroll_pile']);
+        if (leftObject === 'orb') {
+            const orbX = deskX + 8;
+            const orbY = deskY - 8;
+            for (let y = 0; y < 4; y++) {
+                for (let x = -2; x <= 2; x++) setFg(orbX + x, deskY - 1 - y, cStone); // Stand
+            }
+            for (let y = -3; y <= 3; y++) {
+                const w = Math.floor(4 * Math.sqrt(1 - Math.pow(y / 4, 2)));
+                for (let x = -w; x <= w; x++) {
+                    let c = cGlow;
+                    if (x === -1 && y === -1) c = cWhite; // Glint
+                    if (x === w || y === 3) c = cGlowHigh;
+                    setFg(orbX + x, orbY + y, c);
+                }
+            }
+            // Glow emission
+            for (let dy = -6; dy <= 6; dy++) {
+                for (let dx = -6; dx <= 6; dx++) {
+                    if (Math.hypot(dx, dy) < 6 && rng.chance(0.4)) {
+                        overFg(orbX + dx, orbY + dy, cGlow);
+                    }
+                }
+            }
+        } else {
+            const scrollX = deskX + 6;
+            const scrollY = deskY - 1;
+            for (let x = 0; x < 12; x++) {
+                setFg(scrollX + x, scrollY, '#FEF08A');
+                setFg(scrollX + x, scrollY - 1, '#FEF08A');
+                if (x === 0 || x === 11) {
+                    setFg(scrollX + x, scrollY, '#B45309'); // Straps
+                    setFg(scrollX + x, scrollY - 1, '#B45309');
+                }
+            }
+        }
+
+        // C. Right Desk Object (Procedural: Flickering Candle vs Alchemical Flask)
+        const rightObject = rng.pick(['candle', 'flask']);
+        if (rightObject === 'candle') {
+            const candX = deskX + deskW - 10;
+            const candY = deskY - 1;
+            setFg(candX - 1, candY, cStoneShad); setFg(candX, candY, cStoneHigh); setFg(candX + 1, candY, cStoneShad);
+            
+            for (let y = 1; y <= 5; y++) {
+                setFg(candX, candY - y, '#F1F5F9'); 
+                setFg(candX - 1, candY - y, '#CBD5E1'); 
+            }
+            setFg(candX - 1, candY - 2, '#CBD5E1'); // Wax drip
+            setFg(candX, candY - 6, '#475569'); // Wick
+
+            // Wave frequency for flicker
+            const flameY = candY - 8 + Math.round(Math.sin(timeSec * 6.0) * 0.5);
+            setFg(candX, flameY, cGold);
+            setFg(candX, flameY - 1, cWhite);
+            setFg(candX - 1, flameY, cGlow); 
+            setFg(candX + 1, flameY, cGlow);
+        } else {
+            const flaskX = deskX + deskW - 10;
+            const flaskY = deskY - 4;
+            for (let y = -2; y <= 2; y++) {
+                const w = 4 - Math.abs(y);
+                for (let x = -w; x <= w; x++) {
+                    let c = cCyan;
+                    if (y > 0) c = '#0891B2'; // Liquid line
+                    if (x === -w) c = cWhite; 
+                    setFg(flaskX + x, flaskY + y, c);
+                }
+            }
+            for (let y = -4; y < -2; y++) {
+                setFg(flaskX, flaskY + y, cWhite);
+                setFg(flaskX + 1, flaskY + y, '#0891B2');
+            }
+        }
+
+        // 7. SCRIPTURE RUNES SCATTERED ACROSS FLOORS & AIR
+        // Floor Glyphs
+        const numRunes = rng.int(8, 14);
+        for (let i = 0; i < numRunes; i++) {
+            const rx = rng.int(deskX - 30, deskX + deskW + 30);
+            const ry = rng.int(60, 75);
+            if (fgGrid[ry][rx] === null && mgGrid[ry][rx] === null) {
+                setFg(rx, ry, rng.chance(0.6) ? cGlow : cCyan);
+            }
+        }
+
+        // Floating Air Runes
+        const numAirRunes = rng.int(5, 9);
+        for (let i = 0; i < numAirRunes; i++) {
+            const rx = rng.int(70, 250);
+            const ry = rng.int(10, 40);
+            const phaseOffset = i * 45;
+            const driftY = Math.round(Math.sin(timeSec * 2.0 + phaseOffset) * 2);
+            
+            if (fgGrid[ry + driftY][rx] === null && mgGrid[ry + driftY][rx] === null) {
+                setFg(rx, ry + driftY, rng.chance(0.5) ? cGlow : cCyan);
+                if (rng.chance(0.5)) setFg(rx + 1, ry + driftY + 1, cGlowHigh);
+            }
+        }
+
+        // 8. Alistair's Familiar (Tiny Easter-Egg Spectral Owl!)
+        if (rng.chance(0.3)) {
+            const famLeft = rng.chance(0.5);
+            const famX = famLeft ? 38 : 272;
+            const famY = 6;
+            
+            for (let x = -2; x <= 2; x++) {
+                for (let y = -3; y <= 3; y++) {
+                    if (Math.abs(x) + Math.abs(y) < 5) {
+                        setFg(famX + x, famY + y, cCyan);
+                    }
+                }
+            }
+            setFg(famX - 1, famY - 1, cGold); // Eyes
+            setFg(famX + 1, famY - 1, cGold);
+            setFg(famX - 2, famY - 4, cCyan); // Ears
+            setFg(famX + 2, famY - 4, cCyan);
+        }
+    }
+
+    // ==========================================
+    // POI 6: THE VOID PORTAL (Astral Sea Entrance)
+    // ==========================================
+    else if (poiId === 'spawn') {
+        const cBg = '#02020A';       // Deep void black
+        const cSpace = '#0F172A';    // Stardust haze
+        const cVortex = '#7C3AED';   // Swirling purple vortex
+        const cVortexHigh = '#C084FC';
+        const cWater = '#05030A';    // Black-violet water
+        const cDock = '#1E1B4B';     // Basalt docks
+        const cDockShad = '#090514';
+        
+        glowExclusions = [cVortex, cVortexHigh, '#22D3EE', '#FFFFFF'];
+        const timeSec = Date.now() / 1000; // Added to fix ReferenceError
+
+        // 1. Draw solid space backdrop
+        for (let y = 0; y < GRID_H; y++) {
+            for (let x = 0; x < GRID_W; x++) {
+                let c = cBg;
+                if (Math.sin(x * 0.05) > 0.8) c = cSpace;
+                setBg(x, y, c);
+            }
+        }
+
+        // 2. Stars
+        const numStars = rng.int(20, 40);
+        for (let i = 0; i < numStars; i++) {
+            const sx = rng.int(5, GRID_W - 5);
+            const sy = rng.int(5, horizonY - 5);
+            setBg(sx, sy, rng.pick(['#FFFFFF', '#22D3EE', '#FBBF24', '#C084FC']));
+        }
+
+        // 3. Swirling Void Vortex (Main portal centerpiece)
+        const pX = 140; // Center aligned
+        const pY = horizonY - 15;
+        const pR = 25;
+        for (let y = -pR; y <= pR; y++) {
+            const w = Math.floor(pR * Math.sqrt(1 - (y*y)/(pR*pR || 1)));
+            for (let x = -w; x <= w; x++) {
+                let c = cBg;
+                const dist = Math.hypot(x, y);
+                if (dist < 5) c = '#FFFFFF'; // core
+                else if (dist < 12) c = cVortexHigh;
+                else if ((x + y + Math.floor(timeSec * 5)) % 6 === 0) c = cVortex;
+                setMg(pX + x, pY + y, c);
+            }
+        }
+
+        // 4. Portal Rim Pillars
+        for (let dy = -2; dy <= 2; dy++) {
+            for (let dx = -32; dx <= 32; dx++) {
+                if (Math.abs(dx) > pR - 2 && Math.abs(dx) < pR + 4) {
+                    setFg(pX + dx, pY + dy, cDockShad);
+                }
+            }
+        }
+
+        // 5. Water & Basalt Pier
+        for (let y = horizonY; y < GRID_H; y++) {
+            for (let x = 0; x < GRID_W; x++) {
+                setBg(x, y, cWater);
+            }
+        }
+        for (let y = horizonY - 4; y < GRID_H; y++) {
+            for (let x = 0; x < GRID_W - 40; x++) {
+                let c = cDock;
+                if (y === horizonY - 4) c = '#4338CA'; // neon rim
+                if (x % 6 === 0) c = cDockShad;
+                setFg(x, y, c);
+            }
+        }
+    }
     // ==========================================
     // OUTLINE PASS & FINAL RENDER
     // ==========================================

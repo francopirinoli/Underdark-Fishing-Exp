@@ -196,21 +196,64 @@ export function generateUpgrade(options = {}) {
         overPixel(cx + 8, cy + 8, iron.base); overPixel(cx + 7, cy + 6, iron.highlight); overPixel(cx + 5, cy + 4, iron.highlight);
     }
     // --- 8. STORAGE: Cargo Netting ---
-    else if (id === 'upg_cargo_net') {
-        const wood = MATERIALS.OAK;
-        const rope = '#D97706';
-        // Box
-        for (let y = -10; y <= 10; y++) {
-            for (let x = -12; x <= 12; x++) {
-                let c = wood.base;
-                if (x === -12 || y === -10) c = wood.highlight;
-                if (x === 12 || y === 10) c = wood.shadow;
-                // Netting criss-cross
-                if ((x + y) % 6 === 0 || (x - y) % 6 === 0) c = rope;
-                overPixel(cx + x, cy + y, c);
+        else if (id === 'upg_cargo_net') {
+            const wood = MATERIALS.OAK;
+            const rope = '#D97706';
+            // Box
+            for (let y = -10; y <= 10; y++) {
+                for (let x = -12; x <= 12; x++) {
+                    let c = wood.base;
+                    if (x === -12 || y === -10) c = wood.highlight;
+                    if (x === 12 || y === 10) c = wood.shadow;
+                    // Netting criss-cross
+                    if ((x + y) % 6 === 0 || (x - y) % 6 === 0) c = rope;
+                    overPixel(cx + x, cy + y, c);
+                }
             }
         }
-    }
+        // --- 9. SPECIAL: Singularity Regulator ---
+        else if (id === 'upg_singularity_regulator') {
+            const brass = MATERIALS.GOLD;
+            const steel = MATERIALS.STEEL;
+            
+            // Outer circular gyroscope rings
+            const r = 14;
+            for (let a = 0; a < 360; a += 5) {
+                const rad = a * Math.PI / 180;
+                const rx = Math.round(cx + Math.cos(rad) * r);
+                const ry = Math.round(cy + Math.sin(rad) * r);
+                overPixel(rx, ry, brass.base);
+                overPixel(rx - 1, ry - 1, brass.highlight);
+            }
+            
+            // Inner rotating ring
+            const r2 = 9;
+            for (let a = 0; a < 360; a += 8) {
+                const rad = a * Math.PI / 180;
+                const rx = Math.round(cx + Math.cos(rad) * r2);
+                const ry = Math.round(cy + Math.sin(rad) * r2);
+                overPixel(rx, ry, steel.base);
+            }
+
+            // Central swirling violet singularity core
+            for (let y = -5; y <= 5; y++) {
+                const w = Math.floor(6 * Math.sqrt(1 - (y*y)/36));
+                for (let x = -w; x <= w; x++) {
+                    let c = '#A855F7'; // Violet base
+                    if (x === 0 && y === 0) c = '#FFFFFF'; // Bright star core
+                    else if (Math.abs(x) < 2 && Math.abs(y) < 2) c = '#C084FC'; // Lavender
+                    else if ((x + y) % 3 === 0) c = '#020617'; // Dark matter swirl
+                    overPixel(cx + x, cy + y, c);
+                }
+            }
+
+            // Brackets / Support arms
+            for (let y = 14; y <= 18; y++) {
+                overPixel(cx - 1, cy + y, steel.base);
+                overPixel(cx, cy + y, steel.highlight);
+                overPixel(cx + 1, cy + y, steel.shadow);
+            }
+        }
     // --- FALLBACK ---
     else {
         for (let y = -10; y <= 10; y++) {

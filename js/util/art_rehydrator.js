@@ -160,7 +160,7 @@ export const ArtRehydrator = {
                     'geode_monarch', 
                     'ignis_gorged_serpentine', 
                     'glacial_leviathan', 
-                    'void_bound_aboleth'
+                    'void_bound_aboleth' // Added
                 ];
                 
                 if (bossIds.includes(item.id)) {

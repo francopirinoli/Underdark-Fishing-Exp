@@ -160,7 +160,7 @@ export function generateGlobalMap(seed = Date.now(), discoveredNodes = []) {
         crystalPoiNode.name = "The Crystal Museum";
     }
 
-    // --- NEW: Place Volcanic Arena ---
+    // Place Volcanic Arena
     let volcanicPoiNode = null;
     if (deadEnds.volcanic.length > 0) {
         volcanicPoiNode = rng.pick(deadEnds.volcanic);
@@ -171,6 +171,31 @@ export function generateGlobalMap(seed = Date.now(), discoveredNodes = []) {
     if (volcanicPoiNode) {
         volcanicPoiNode.poi = 'volcanic_arena';
         volcanicPoiNode.name = "The Aquatic Arena";
+    }
+
+    // --- NEW: Place Anglers Club ---
+    let frozenPoiNode = null;
+    if (deadEnds.frozen.length > 0) {
+        frozenPoiNode = rng.pick(deadEnds.frozen);
+    } else {
+        const allFrozen = nodes.flat().filter(n => n.biomeId === 'frozen');
+        if (allFrozen.length > 0) frozenPoiNode = rng.pick(allFrozen);
+    }
+    if (frozenPoiNode) {
+        frozenPoiNode.poi = 'anglers_club';
+        frozenPoiNode.name = "The Anglers Club";
+    }
+    // --- NEW: Place Mage Tower ---
+    let abyssalPoiNode = null;
+    if (deadEnds.abyssal.length > 0) {
+        abyssalPoiNode = rng.pick(deadEnds.abyssal);
+    } else {
+        const allAbyssal = nodes.flat().filter(n => n.biomeId === 'abyssal');
+        if (allAbyssal.length > 0) abyssalPoiNode = rng.pick(allAbyssal);
+    }
+    if (abyssalPoiNode) {
+        abyssalPoiNode.poi = 'mage_tower';
+        abyssalPoiNode.name = "The Mage Tower";
     }
 
     // 6. SYSTEMATIC SETTLEMENT PLACEMENT (10 total, 2 per biome)
@@ -346,4 +371,146 @@ export function generateMuseumSlots(rng) {
         slots.push({ id: i, reqs: reqs, title: titleParts.join(' ') });
     }
     return slots;
+}
+
+/**
+ * --- NEW: THE ASTRAL SEA GLOBAL MAP GENERATOR ---
+ * Generates an isolated 4x4 Global Node Map representing the Astral Sea.
+ * Seamlessly hooks into the standard world container for dungeon-crawl navigation.
+ */
+export function generateAstralSeaGlobalMap(seed, discoveredNodes = []) {
+    const rng = createRng(seed);
+    const nodes = [];
+
+    // 1. Initialize 4x4 Grid of Astral Sea Nodes
+    for (let y = 0; y < 4; y++) {
+        const row = [];
+        for (let x = 0; x < 4; x++) {
+            const isDisc = discoveredNodes.includes(`${x},${y}`);
+            row.push({
+                x, y,
+                id: `astral_${x}_${y}`,
+                biomeId: 'astral_sea',
+                name: '',
+                exits: { n: false, s: false, e: false, w: false },
+                hasSettlement: false,
+                settlementName: '',
+                isStarter: x === 0 && y === 0,
+                isDiscovered: isDisc,
+                poi: null
+            });
+        }
+        nodes.push(row);
+    }
+
+    // 2. Connect Nodes using Seeded DFS Maze Generation
+    const visited = Array(4).fill(null).map(() => Array(4).fill(false));
+
+    function carveAstralPassagesFrom(cx, cy) {
+        visited[cy][cx] = true;
+        
+        const directions = [
+            { dx: 0, dy: -1, dir: 'n', opp: 's' },
+            { dx: 0, dy: 1, dir: 's', opp: 'n' },
+            { dx: 1, dy: 0, dir: 'e', opp: 'w' },
+            { dx: -1, dy: 0, dir: 'w', opp: 'e' }
+        ];
+        
+        // Shuffle directions
+        for (let i = directions.length - 1; i > 0; i--) {
+            const j = rng.int(0, i);
+            [directions[i], directions[j]] = [directions[j], directions[i]];
+        }
+
+        for (const { dx, dy, dir, opp } of directions) {
+            const nx = cx + dx;
+            const ny = cy + dy;
+            
+            if (nx >= 0 && nx < 4 && ny >= 0 && ny < 4 && !visited[ny][nx]) {
+                nodes[cy][cx].exits[dir] = true;
+                nodes[ny][nx].exits[opp] = true;
+                carveAstralPassagesFrom(nx, ny);
+            }
+        }
+    }
+    carveAstralPassagesFrom(0, 0);
+
+    // 3. Add Random Loop Connections to prevent strictly linear pathways
+    for (let y = 0; y < 4; y++) {
+        for (let x = 0; x < 4; x++) {
+            if (x < 3 && !nodes[y][x].exits.e && rng.chance(0.25)) {
+                nodes[y][x].exits.e = true;
+                nodes[y][x+1].exits.w = true;
+            }
+            if (y < 3 && !nodes[y][x].exits.s && rng.chance(0.25)) {
+                nodes[y][x].exits.s = true;
+                nodes[y+1][x].exits.n = true;
+            }
+        }
+    }
+
+    // 4. Generate Procedural Cosmic Names
+    const shuffledNames = [
+        "Siren's Drift", "Stardust Reef", "The Shimmering Rift",
+        "Nebula Cross", "The Mirror Passage", "Eldritch Channel", "Spectral Shoals",
+        "The Whispering Trench", "The Void Whorl", "Shattered Conflux", "The Glacial Gap",
+        "Singularity Well", "Brimstone Ridge", "The Astral Reach"
+    ];
+
+    // Shuffle names deterministically
+    for (let i = shuffledNames.length - 1; i > 0; i--) {
+        const j = rng.int(0, i);
+        [shuffledNames[i], shuffledNames[j]] = [shuffledNames[j], shuffledNames[i]];
+    }
+
+    const roomOptions = ['cosmic_storm', 'siren_trap', 'phantom_room', 'reef_chamber'];
+
+    // Identify dead-end nodes in the 4x4 grid to place high-tier salvage chests
+    const deadEnds4x4 = [];
+    for (let y = 0; y < 4; y++) {
+        for (let x = 0; x < 4; x++) {
+            if ((x === 0 && y === 0) || (x === 3 && y === 3)) continue;
+            const node = nodes[y][x];
+            let exits = 0;
+            if (node.exits.n) exits++;
+            if (node.exits.s) exits++;
+            if (node.exits.e) exits++;
+            if (node.exits.w) exits++;
+            if (exits === 1) deadEnds4x4.push(node);
+        }
+    }
+
+    // Place 1 or 2 Cosmic Salvage POIs
+    const numChests = Math.min(deadEnds4x4.length, rng.int(1, 2));
+    for (let i = 0; i < numChests; i++) {
+        const node = rng.pick(deadEnds4x4);
+        deadEnds4x4.splice(deadEnds4x4.indexOf(node), 1); // Avoid duplicates
+        node.poi = 'cosmic_salvage';
+    }
+
+    let nameIdx = 0;
+    for (let y = 0; y < 4; y++) {
+        for (let x = 0; x < 4; x++) {
+            const node = nodes[y][x];
+            if (x === 0 && y === 0) {
+                node.name = "The Void Portal";
+                node.poi = 'spawn';
+            } else if (x === 3 && y === 3) {
+                node.name = "Aboleth's Prison";
+                node.poi = 'astral_sea';
+            } else {
+                node.name = node.poi === 'cosmic_salvage' ? "Cosmic Salvage Room" : shuffledNames[nameIdx++];
+                node.poi = node.poi || rng.pick(roomOptions); // Keeps salvage, randomizes others
+            }
+        }
+    }
+
+    return {
+        seed: seed,
+        width: 4,
+        height: 4,
+        nodes: nodes,
+        startX: 0,
+        startY: 0
+    };
 }

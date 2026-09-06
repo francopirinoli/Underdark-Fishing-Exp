@@ -196,9 +196,69 @@ export function generateFishData(options = {}) {
             economy: { pricePerKg: 12.0, baseValue: 20000, baseXp: 750 }
         };
     }
+    // --- NEW: BOSS DATA INTERCEPT (Frozen) ---
+    if (options.bossId === 'glacial_leviathan') {
+        const artPhase1 = generateBossArt({ bossId: 'glacial_leviathan', rng: artRng, phase: 1 });
+        const artPhase2 = generateBossArt({ bossId: 'glacial_leviathan', rng: artRng, phase: 2 });
+        const artPhase3 = generateBossArt({ bossId: 'glacial_leviathan', rng: artRng, phase: 3 });
+        
+        return {
+            id: 'glacial_leviathan', 
+            seed: seed,
+            identity: { name: 'Glacial Leviathan', family: 'shark', rarity: 'Boss' },
+            art: { 
+                imageDataUrl: artPhase1.imageDataUrl, 
+                phaseUrls: { 1: artPhase1.imageDataUrl, 2: artPhase2.imageDataUrl, 3: artPhase3.imageDataUrl },
+                palette: 'Frozen', metadata: {} 
+            },
+            environment: { biomes: ['frozen'], depthPref: 'Bottom-feeder', tempPref: -100, activeHours: 'Always Active' },
+            lurePrefs: { color: -90, sound: -70, light: -80, weight: 90, tolerance: 0.15 }, 
+            physical: { sizeTier: 'Massive', weightRange: { min: 1500.0, max: 2500.0 } },
+            // --- 3-Phase Sequential Stats ---
+            combat: { 
+                stamina: [360, 200, 0], // Massive stamina pool
+                speed: [45, 50, 0], // Slower, but heavy. Stops moving in phase 3.
+                aggression: [0.80, 0.90, 0.0], 
+                hookWindowMs: 2500, 
+                optimalReel: [40, 45, 50] 
+            },
+            economy: { pricePerKg: 14.0, baseValue: 20000, baseXp: 800 }
+        };
+    }
+    
+    // --- NEW: BOSS DATA INTERCEPT (The Void-Bound Aboleth) ---
+    if (options.bossId === 'void_bound_aboleth') {
+        const artPhase1 = generateBossArt({ bossId: 'void_bound_aboleth', rng: artRng, phase: 1 });
+        const artPhase2 = generateBossArt({ bossId: 'void_bound_aboleth', rng: artRng, phase: 2 });
+        const artPhase3 = generateBossArt({ bossId: 'void_bound_aboleth', rng: artRng, phase: 3 });
+        
+        return {
+            id: 'void_bound_aboleth',
+            seed: seed,
+            identity: { name: 'The Void-Bound Aboleth', family: 'cephalopod', rarity: 'Boss' },
+            art: {
+                imageDataUrl: artPhase1.imageDataUrl,
+                phaseUrls: { 1: artPhase1.imageDataUrl, 2: artPhase2.imageDataUrl, 3: artPhase3.imageDataUrl },
+                palette: 'Void Starlight', metadata: {}
+            },
+            environment: { biomes: ['astral_sea'], depthPref: 'Bottom-feeder', tempPref: -120, activeHours: 'Always Active' },
+            lurePrefs: { color: -100, sound: -100, light: 100, weight: 100, tolerance: 0.15 },
+            physical: { sizeTier: 'Massive', weightRange: { min: 2000.0, max: 3500.0 } },
+            // 3-Phase Sequential Stats
+            combat: {
+                stamina: [380, 200, 0], // 380: Highest raw stamina in the game
+                speed: [55, 65, 75],    // Accelerates in Phase 2 & 3
+                aggression: [0.90, 0.95, 0.0],
+                hookWindowMs: 2000,
+                optimalReel: [35, 30, 25] // Sinks deeper as the fight progresses
+            },
+            economy: { pricePerKg: 15.0, baseValue: 25000, baseXp: 1000 }
+        };
+    }
 
     let availableFamilies = Object.keys(ART_GENERATORS);
-    if (options.biomeId && options.biomeId !== 'abyssal') {
+    // Allow deep sea horrors to spawn in both Abyssal and Astral Sea environments
+    if (options.biomeId && options.biomeId !== 'abyssal' && options.biomeId !== 'astral_sea') {
         availableFamilies = availableFamilies.filter(f => f !== 'deepsea');
     }
     const family = options.family || metaRng.pick(availableFamilies);
@@ -220,7 +280,9 @@ export function generateFishData(options = {}) {
     }
 
     const primaryBiome = biomes[0];
-    const tempPref = statRng.int(BIOME_TEMPS[primaryBiome].min, BIOME_TEMPS[primaryBiome].max);
+    // Defensive check: fallback to abyssal temperature limits if custom/virtual biomes are used
+    const tempLimits = BIOME_TEMPS[primaryBiome] || BIOME_TEMPS['abyssal'];
+    const tempPref = statRng.int(tempLimits.min, tempLimits.max);
     const depthPref = statRng.pick(arch.depths);
     const activeHours = statRng.pick(['Diurnal', 'Nocturnal', 'Crepuscular', 'Always Active']);
 

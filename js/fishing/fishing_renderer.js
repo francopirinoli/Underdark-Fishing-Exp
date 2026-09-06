@@ -425,7 +425,7 @@ export const FishingRenderer = {
                 
                 // Giant Center Text Announcement
                 this.announcement = {
-                    text: `PHASE ${engine.bossPhase}!`,
+                    text: `THE BEAST ENRAGES!`, // <-- UPDATED to be atmospheric
                     timer: 2.0, // Lasts 2.0s
                     color: getRarityColor('Boss')
                 };
@@ -471,11 +471,8 @@ export const FishingRenderer = {
 
         // --- NEW: Dynamic Phase Title Bar Update ---
         const isBoss = engine.fishData.identity.rarity === 'Boss';
-        if (isBoss) {
-            this.elements.title.innerText = `Fighting: ${engine.fishData.identity.name} [Phase ${engine.bossPhase}/3]`;
-        } else {
-            this.elements.title.innerText = `Fighting: ${engine.fishData.identity.name}`;
-        }
+        // Removed [Phase X/3] entirely so players don't receive that meta-information
+        this.elements.title.innerText = `Fighting: ${engine.fishData.identity.name}`;
 
         this.elements.lblTimer.innerText = Math.max(0, engine.fightTimer).toFixed(1);
         if (engine.fightTimer <= 5.0) this.elements.timerWrap.style.color = "#DC2626"; 
@@ -563,6 +560,20 @@ export const FishingRenderer = {
         let behaviorText = "";
         let behaviorColor = "";
 
+        // --- NEW: PSYCHEDELIC BOARD WARP ---
+        const board = this.elements.board;
+        const isPsychicInverted = engine.fishData && engine.fishData.id === 'void_bound_aboleth' && engine.bossState.isControlsInverted;
+        
+        if (isPsychicInverted) {
+            const skew = Math.sin(Date.now() / 40) * 5; 
+            const scale = 1.0 + Math.sin(Date.now() / 25) * 0.04;
+            board.style.transform = `skewX(${skew}deg) scale(${scale})`;
+            board.style.borderColor = '#A855F7'; // Neon violet
+            board.style.boxShadow = '0 0 50px rgba(168, 85, 247, 0.7)';
+        } else {
+            board.style.transform = 'none';
+        }
+
         if (state === 'HOLD') {
             behaviorText = fStamPct <= 0 ? "The fish is exhausted..." : "The fish is holding steady.";
             behaviorColor = fStamPct <= 0 ? '#64748B' : '#3B82F6';
@@ -576,8 +587,13 @@ export const FishingRenderer = {
             behaviorText = "A sudden violent burst!";
             behaviorColor = '#DC2626';
         } else if (state === 'INANIMATE') {
-            behaviorText = "Heavy dead weight...";
-            behaviorColor = '#94A3B8';
+            if (engine.fishData && engine.fishData.id === 'cage_tether') {
+                behaviorText = "Stabilizing frequency...";
+                behaviorColor = '#C084FC';
+            } else {
+                behaviorText = "Heavy dead weight...";
+                behaviorColor = '#94A3B8';
+            }
         } else if (state === 'SECOND_WIND') {
             behaviorText = "It caught a second wind!";
             behaviorColor = '#A855F7';
@@ -636,12 +652,27 @@ export const FishingRenderer = {
         const startDrawY = Math.max(0, surfaceY);
         const sliceHeight = this.CH - startDrawY;
         const gradStartY = engine.currentDepth * PX_PER_METER;
-        
+
         if (this.bgGradientCanvas && sliceHeight > 0) {
             ctx.drawImage(this.bgGradientCanvas, 0, gradStartY, this.CW, sliceHeight, 0, startDrawY, this.CW, sliceHeight);
         } else {
             ctx.fillStyle = this.biomePal.water;
             ctx.fillRect(0, 0, this.CW, this.CH);
+        }
+
+        // --- NEW: ABOLETH PSYCHIC SHOCKWAVE RIPPLES ---
+        const isPsychicInverted = engine.fishData && engine.fishData.id === 'void_bound_aboleth' && engine.bossState.isControlsInverted;
+        if (isPsychicInverted) {
+            ctx.save();
+            ctx.strokeStyle = 'rgba(168, 85, 247, 0.4)';
+            ctx.lineWidth = 3;
+            for (let r = 20; r < 240; r += 40) {
+                const ringRadius = (r + (timeSec * 100)) % 240;
+                ctx.beginPath();
+                ctx.arc(this.CW / 2, LURE_Y + 15, ringRadius, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+            ctx.restore();
         }
 
         // Draw Particles
@@ -719,8 +750,32 @@ export const FishingRenderer = {
             ctx.drawImage(this.lureImg, lureX - (lureW / 2) + lSway, LURE_Y, lureW, lureH);
         }
 
-        // Draw Fish
-        if (this.fishImgNormal && this.fishImgNormal.complete && engine.phase !== 'SINKING') {
+        // Draw Fish or Tethered Cage
+        if (engine.fishData && engine.fishData.id === 'cage_tether' && engine.phase !== 'SINKING') {
+            // --- NEW: TETHER CAGE RENDERING ---
+            ctx.save();
+            
+            // Sway based on water current and struggle
+            const sway = engine.waterCurrent * 5 + Math.sin(Date.now() / 150) * 8;
+            ctx.translate(lureX + sway, LURE_Y + 40);
+            
+            // Render the containment cage
+            ctx.strokeStyle = '#22D3EE'; // Cyan laser bars
+            ctx.lineWidth = 3;
+            ctx.strokeRect(-12, -25, 24, 50);
+            ctx.strokeRect(-6, -25, 12, 50);
+            
+            // Energy core / Aboleth inside
+            ctx.fillStyle = 'rgba(192, 132, 252, 0.6)';
+            ctx.fillRect(-10, -23, 20, 46);
+            ctx.fillStyle = 'rgba(168, 85, 247, 0.9)';
+            ctx.fillRect(-4, -15, 8, 30);
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(-1, -5, 2, 2); // Glowing eye
+            
+            ctx.restore();
+            
+        } else if (this.fishImgNormal && this.fishImgNormal.complete && engine.phase !== 'SINKING') {
             ctx.save();
             const fw = this.fishImgNormal.width * 0.6; 
             const fh = this.fishImgNormal.height * 0.6;
@@ -809,6 +864,17 @@ export const FishingRenderer = {
 
             ctx.fillStyle = `rgba(255, 255, 255, ${pulseIntensity * 0.4})`;
             ctx.fillRect(this.CW / 2 - 12, 0, 24, this.CH);
+        }
+
+        // --- NEW: GLACIAL LEVIATHAN FREEZING VIGNETTE ---
+        const isIceBoss = engine.fishData && engine.fishData.id === 'glacial_leviathan';
+        if (isIceBoss && engine.bossPhase >= 2 && engine.phase === 'FIGHT') {
+            const grad = ctx.createRadialGradient(this.CW/2, this.CH/2, this.CH * 0.2, this.CW/2, this.CH/2, this.CW * 0.8);
+            grad.addColorStop(0, 'rgba(186, 230, 253, 0)');
+            const intensity = engine.bossPhase === 3 ? 0.6 : 0.25; // Gets much thicker in Phase 3
+            grad.addColorStop(1, `rgba(186, 230, 253, ${intensity})`);
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, this.CW, this.CH);
         }
 
         // --- NEW: SCREEN TRANSITION FLASH ---

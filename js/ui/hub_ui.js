@@ -26,6 +26,7 @@ import { ArenaCampaign } from '../fishing/arena_campaign.js';
 import { ArenaEngine } from '../fishing/arena_engine.js';
 import { ArenaRenderer } from '../fishing/arena_renderer.js';
 import { MusicEngine } from '../audio/music_engine.js'; 
+import { ACHIEVEMENTS, AchievementEngine } from '../data/achievement_engine.js';
 
 export const HubUI = {
     gameState: null,
@@ -220,7 +221,33 @@ export const HubUI = {
         } else if (node.poi === 'volcanic_arena') {
             this.currentNPCs = { master: generateNPCData({ seed: rng.next() * 10000, biomeId: 'volcanic', race: 'Orc', gender: 'Male', archetype: 'Mercenary' }) };
             this.currentNPCs.master.name = "Gladiator-Master Ignis"; 
-            this.activeTab = 'master'; // <-- FIX: Set default tab to 'master', not 'arena'
+            this.activeTab = 'master'; 
+        } else if (node.poi === 'anglers_club') {
+            // --- NEW: Anglers Club NPC ---
+            this.currentNPCs = { guildmaster: generateNPCData({ seed: rng.next() * 10000, biomeId: 'frozen', race: 'Dwarf', gender: 'Male', archetype: 'Tavern Keeper' }) };
+            this.currentNPCs.guildmaster.name = "Guildmaster Thrumm"; 
+            this.activeTab = 'lodge';
+        } else if (node.poi === 'mage_tower') {
+            // --- NEW: Mage Tower NPC ---
+            this.currentNPCs = { alistair: generateNPCData({ seed: rng.next() * 10000, biomeId: 'abyssal', race: 'Tiefling', gender: 'Male', archetype: 'Cave Scholar' }) };
+            this.currentNPCs.alistair.name = "Archmage Alistair";
+            this.activeTab = 'telemetry';
+        } else if (node.poi === 'spawn') {
+            // --- FIX: Random Vendors for the Astral Sanctuary ---
+            this.currentNPCs = {
+                market: generateNPCData({ seed: rng.next() * 10000, biomeId: 'abyssal' }),
+                fishmonger: generateNPCData({ seed: rng.next() * 10000, biomeId: 'abyssal' }),
+                boatwright: generateNPCData({ seed: rng.next() * 10000, biomeId: 'abyssal' })
+            };
+            
+            // Generate standard inventories for the dungeon safe-zone
+            const dailySeed = townSeed + state.gameDay;
+            this.merchantInv = MerchantGenerator.getMerchantStock(dailySeed, 'astral_sea', player.stats.bartering);
+            this.fishmongerInv = MerchantGenerator.getFishmongerStock(dailySeed + 1, 'astral_sea', player.stats.bartering);
+            this.boatwrightInv = MerchantGenerator.getBoatwrightStock(dailySeed + 2, 'astral_sea', player.stats.bartering);
+            
+            this.activeTab = 'market';
+            this.marketMode = 'buy';
         } else {
             this.currentNPCs = {
                 market: generateNPCData({ seed: rng.next() * 10000, biomeId: node.biomeId }),
@@ -249,7 +276,14 @@ export const HubUI = {
             } else if (node.poi === 'crystal_museum') {
                 btn.style.display = ['exhibition', 'curator'].includes(tab) ? 'block' : 'none'; 
             } else if (node.poi === 'volcanic_arena') {
-                btn.style.display = ['arena', 'master'].includes(tab) ? 'block' : 'none'; // <-- NEW
+                btn.style.display = ['arena', 'master'].includes(tab) ? 'block' : 'none'; 
+            } else if (node.poi === 'anglers_club') {
+                btn.style.display = ['lodge', 'vault'].includes(tab) ? 'block' : 'none';
+            } else if (node.poi === 'mage_tower') {
+                btn.style.display = ['telemetry', 'alistair'].includes(tab) ? 'block' : 'none';
+            } else if (node.poi === 'spawn') {
+                // Limit to Merchant, Fishmonger, and Boatwright inside the Void Portal
+                btn.style.display = ['market', 'fishmonger', 'boatwright'].includes(tab) ? 'block' : 'none';
             } else {
                 btn.style.display = ['market', 'fishmonger', 'boatwright', 'tavern', 'safehouse'].includes(tab) ? 'block' : 'none';
             }
@@ -306,10 +340,12 @@ export const HubUI = {
         let npcKey = this.activeTab;
         if (this.activeTab === 'compost') npcKey = 'elders';
         if (this.activeTab === 'exhibition') npcKey = 'curator'; 
-        if (this.activeTab === 'arena') npcKey = 'master'; // <-- NEW
+        if (this.activeTab === 'arena') npcKey = 'master'; 
+        if (this.activeTab === 'lodge' || this.activeTab === 'vault') npcKey = 'guildmaster'; // <-- NEW: Route Anglers Club tabs
+        if (this.activeTab === 'telemetry' || this.activeTab === 'alistair') npcKey = 'alistair'; // <-- NEW: Route Mage Tower tabs
         
         const npc = this.currentNPCs[npcKey];
-        if (!npc) return; 
+        if (!npc) return; // Safety fallback
 
         let msg = "";
         const rng = createRng(Date.now());
@@ -360,6 +396,7 @@ export const HubUI = {
                     msg = "We are so close to the final milestone. Only a few more elite exhibits remain before our funding cap is met.";
                 }
             }
+            
             } else if (this.activeTab === 'master' || this.activeTab === 'arena') {
             // --- NEW: PROGRESSIVE ARENA DIALOGUE ---
             const progressLevel = this.gameState.player.endgameProgress?.lava?.currentTier || 1;
@@ -371,6 +408,40 @@ export const HubUI = {
                 msg = "You have survived the gauntlet. Now face the heat of the core. Defeat my champions, and the Brimstone Hook is yours.";
             } else {
                 msg = "You are the undisputed champion of the springs. But the arena never sleeps. Defend your title in Challenger's Deep.";
+            }
+            } else if (this.activeTab === 'lodge' || this.activeTab === 'vault') {
+            // --- NEW: GUILDMASTER DIALOGUE ---
+            const progress = this.gameState.player.endgameProgress?.ice;
+            const rank = progress ? progress.clubRank : 'Rank D';
+            
+            if (this.activeTab === 'lodge') {
+                msg = `Welcome to the Lodge, rookie. Your current standing is ${rank}. Complete the feats on the board to earn our respect.`;
+            } else if (this.activeTab === 'vault') {
+                if (rank === 'Rank D') msg = "I'll sell you basic supplies, but the good stuff is locked away until you raise your rank.";
+                else if (rank === 'Rank S') msg = "A true legend of the Fjord. The Vault is fully open to you. Take whatever you need.";
+                else msg = "You've earned some respect on the ice. Feel free to browse the extended armory.";
+            }
+        } else if (this.activeTab === 'alistair' || this.activeTab === 'telemetry') {
+            // --- NEW: ARCHMAGE ALISTAIR PROGRESSIVE DIALOGUE ---
+            const player = this.gameState.player;
+            const abyssal = player.endgameProgress?.abyssal;
+            const entered = abyssal?.whirlpoolsEntered || 0;
+            const freed = abyssal?.abolethFreed || false;
+
+            // Trigger Quest Start on first greeting
+            if (abyssal && !abyssal.questStarted) {
+                abyssal.questStarted = true;
+                if (this.callbacks.onSave) this.callbacks.onSave();
+            }
+
+            if (freed) {
+                msg = "Splendid! The Aboleth has escaped back into the great Void. The planar tether was pulled perfectly! Take this gear—it belongs to a true master of singularity.";
+            } else if (entered === 4) {
+                msg = "My monitors are screaming! The next Void Whirlpool you breach will not crush your hull—it will shatter the planar wall entirely. Proceed into the fifth vortex, and cross into the Astral Sea.";
+            } else if (entered > 0) {
+                msg = `Telemetry received for ${entered} breach${entered > 1 ? 'es' : ''}. Fascinating... the gravity matrix is aligning exactly as predicted. We need more data. Drive into another active whirlpool!`;
+            } else {
+                msg = "You sail on a sea of anomalies, angler. The Void Whirlpools are not mere hazards—they are active gateways. Drive your vessel directly into active whirlpools so I may compile the gravitational shear data.";
             }
         } else {
             const roleName = this.activeTab === 'market' ? 'Merchant' : this.activeTab.charAt(0).toUpperCase() + this.activeTab.slice(1);
@@ -428,7 +499,12 @@ export const HubUI = {
         else if (this.activeTab === 'elders') this.renderElders(content);   
         else if (this.activeTab === 'exhibition') this.renderExhibition(content); 
         else if (this.activeTab === 'curator') this.renderCurator(content);       
-        else if (this.activeTab === 'master') this.renderMaster(content); // <-- FIX: 'arena' call removed!
+        else if (this.activeTab === 'arena') this.renderArena(content);   
+        else if (this.activeTab === 'master') this.renderMaster(content); 
+        else if (this.activeTab === 'lodge') this.renderLodge(content); 
+        else if (this.activeTab === 'vault') this.renderVault(content); 
+        else if (this.activeTab === 'telemetry') this.renderTelemetry(content); // Added
+        else if (this.activeTab === 'alistair') this.renderAlistair(content);   // Added
     },
 
     // --- MARKET: BUY & SELL TOGGLE ---
@@ -512,6 +588,10 @@ export const HubUI = {
                         SFX.playGold();
                         player.vitals.gold -= item.price;
                         if (item.stock !== 99) item.stock--;
+
+                        // --- NEW: Tracking Hook (Items Bought) ---
+                        player.endgameProgress.ice.stats.itemsBought++;
+                        if (this.callbacks.checkAchievements) this.callbacks.checkAchievements();
                         
                         if (item.id === 'cons_ration') {
                             player.vitals.rations = Math.min(20, player.vitals.rations + 1);
@@ -578,6 +658,12 @@ export const HubUI = {
                     SFX.playGold();
                     player.vitals.gold += sellValue;
                     player.inventory.splice(realIndex, 1);
+                    // --- NEW: Tracking Hook (Gold Earned) ---
+                    player.endgameProgress.ice.stats.goldEarned += sellValue;
+                    if (item.invType === 'fish') {
+                        player.endgameProgress.ice.stats.mostExpensiveFishSold = Math.max(player.endgameProgress.ice.stats.mostExpensiveFishSold, sellValue);
+                    }
+                    if (this.callbacks.checkAchievements) this.callbacks.checkAchievements();
                     TooltipUI.hide(); // <-- UPDATED
                     this.renderActiveTab();
                 };
@@ -655,6 +741,9 @@ export const HubUI = {
                         player.vitals.gold -= item.price;
                         item.stock--;
                         player.reagents.push({ ...item, invType: 'part' }); 
+                        // --- NEW: Tracking Hook (Items Bought) ---
+                        player.endgameProgress.ice.stats.itemsBought++;
+                        if (this.callbacks.checkAchievements) this.callbacks.checkAchievements();
                         
                         const rng = createRng(Date.now());
                         // Pass the fishmonger NPC down to get their species-specific haggling response
@@ -709,6 +798,12 @@ export const HubUI = {
                         player.vitals.gold += sellValue;
                         if (isReagent) player.reagents.splice(realIndex, 1);
                         else player.inventory.splice(realIndex, 1);
+                        // --- NEW: Tracking Hook (Gold Earned) ---
+                        player.endgameProgress.ice.stats.goldEarned += sellValue;
+                        if (item.invType === 'fish') {
+                            player.endgameProgress.ice.stats.mostExpensiveFishSold = Math.max(player.endgameProgress.ice.stats.mostExpensiveFishSold, sellValue);
+                        }
+                        if (this.callbacks.checkAchievements) this.callbacks.checkAchievements();
                         TooltipUI.hide(); // <-- UPDATED
                         this.renderActiveTab();
                     };
@@ -835,6 +930,9 @@ export const HubUI = {
                     SFX.playGold();
                     player.vitals.gold -= item.price;
                     if (item.stock !== 99) item.stock--;
+                    // --- NEW: Tracking Hook (Items Bought) ---
+                    player.endgameProgress.ice.stats.itemsBought++;
+                    if (this.callbacks.checkAchievements) this.callbacks.checkAchievements();
                     
                     // --- FIX: Force standard type and invType properties upon purchase ---
                     if (item.type === 'upgrade' || (item.id && item.id.startsWith('upg_'))) {
@@ -916,6 +1014,8 @@ export const HubUI = {
                     SFX.playGold();
                     player.vitals.gold += sellValue;
                     player.inventory.splice(realIndex, 1);
+                    player.endgameProgress.ice.stats.goldEarned += sellValue;
+                    if (this.callbacks.checkAchievements) this.callbacks.checkAchievements();
                     TooltipUI.hide(); // <-- UPDATED
                     this.renderActiveTab();
                 };
@@ -2423,6 +2523,231 @@ export const HubUI = {
                 components: ['lead_sinker', 'glow_bulb', 'spinner'], 
                 imageDataUrl: generateMythicLure({ lureId: 'prismatic_geode_hook', rng }).imageDataUrl 
             });
+        }
+    },
+
+    // ==========================================
+    // THE ANGLERS CLUB (ENDGAME POI)
+    // ==========================================
+
+    renderLodge(container) {
+        const player = this.gameState.player;
+        const iceData = player.endgameProgress.ice;
+        
+        // --- FIX: Use Flexbox to fill the height perfectly and eliminate double scrollbars ---
+        let html = `
+            <div style="display:flex; flex-direction:column; height:100%;">
+                <div style="flex-shrink:0; display:flex; justify-content:space-between; align-items:baseline; border-bottom: 2px solid #60A5FA; padding-bottom: 0.5rem; margin-bottom: 1rem;">
+                    <h2 style="margin:0; color:#60A5FA; font-size: 1.8rem;">Guildmaster Thrumm</h2>
+                    <div style="font-size: 1.4rem; color:var(--cyan-glow); font-weight:bold;">${iceData.clubRank} <span style="color:var(--text-muted); font-size:1rem;">(${iceData.clubPoints} pts)</span></div>
+                </div>
+                
+                <h3 style="flex-shrink:0; color:#60A5FA; font-size: 1.4rem; margin: 0 0 0.5rem 0; border-bottom: 1px dashed var(--panel-border); padding-bottom:0.5rem;">The Achievement Board</h3>
+                
+                <div style="flex:1; display: flex; flex-direction: column; gap: 0.5rem; overflow-y: auto; padding-right: 0.5rem;">
+        `;
+
+        ACHIEVEMENTS.forEach(ach => {
+            const isUnlocked = iceData.unlockedAchievements.includes(ach.id);
+            const color = isUnlocked ? '#22C55E' : 'var(--text-muted)';
+            const bg = isUnlocked ? 'rgba(34, 197, 94, 0.1)' : 'var(--panel-base)';
+            const border = isUnlocked ? '#22C55E' : 'var(--panel-border)';
+
+            html += `
+                <div style="background: ${bg}; border: 1px solid ${border}; padding: 0.8rem; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;">
+                    <div>
+                        <div style="color: ${color}; font-weight: bold; font-size: 1.1rem; margin-bottom: 0.2rem;">${ach.title} <span style="font-size:0.85rem; opacity:0.8;">[${ach.category}]</span></div>
+                        <div style="color: var(--text-main); font-size: 0.95rem;">${ach.desc}</div>
+                    </div>
+                    <div style="color: ${isUnlocked ? '#FBBF24' : 'var(--text-muted)'}; font-weight: bold; font-size: 1.2rem;">
+                        ${isUnlocked ? '✓' : ''} ${ach.pts} pts
+                    </div>
+                </div>
+            `;
+        });
+
+        html += `</div></div>`;
+        container.innerHTML = html;
+    },
+
+    renderVault(container) {
+        const player = this.gameState.player;
+        const iceData = player.endgameProgress.ice;
+        
+        // Generate the custom gated inventory
+        const vaultInv = MerchantGenerator.getClubShopStock(this.gameState.world.seed + this.gameState.gameDay, iceData.clubRank, player);
+
+        // --- FIX: Use Flexbox to fill the height perfectly and eliminate double scrollbars ---
+        container.innerHTML = `
+            <div style="display:flex; flex-direction:column; height:100%;">
+                <div style="flex-shrink:0; display:flex; justify-content:space-between; align-items:baseline; border-bottom: 2px solid #60A5FA; padding-bottom: 0.5rem; margin-bottom: 1rem;">
+                    <div style="display: flex; gap: 1rem; align-items: baseline;">
+                        <h2 style="margin:0; color:#60A5FA; font-size: 1.8rem;">The Vault</h2>
+                        <span style="color:var(--text-muted); font-size: 1.1rem;">(Your Rank: <b style="color:var(--cyan-glow);">${iceData.clubRank}</b>)</span>
+                    </div>
+                    <div style="font-size: 1.4rem; color:var(--gold-warn);">💰 ${player.vitals.gold}g</div>
+                </div>
+                <div id="hub-vault-list" style="flex:1; display: flex; flex-direction: column; gap: 0.5rem; overflow-y: auto; padding-right: 0.5rem;"></div>
+            </div>
+        `;
+
+        const list = document.getElementById('hub-vault-list');
+        
+        vaultInv.forEach((item) => {
+            const row = document.createElement('div');
+            row.className = 'shop-item-row';
+            
+            const canAfford = player.vitals.gold >= item.price;
+            const hasStock = item.stock > 0;
+            const isDisabled = !canAfford || !hasStock;
+            let btnText = (!hasStock) ? "Sold Out" : (!canAfford) ? "Too Expensive" : "Buy";
+
+            const targetItem = item.itemData || item;
+            let imgSrc = targetItem.imageDataUrl || (targetItem.art ? targetItem.art.imageDataUrl : '');
+            let imgHtml = imgSrc ? `<img src="${imgSrc}" style="width:48px; height:48px; background:#000; border:1px solid var(--panel-border); border-radius:4px; image-rendering:pixelated; object-fit:contain;" />` : '';
+
+            row.innerHTML = `
+                <div style="display:flex; gap: 1rem; align-items:center;">
+                    ${imgHtml}
+                    <div class="shop-item-info">
+                        <b style="color: ${getItemColor(targetItem)};">${item.name}</b> <span style="font-size:0.85rem; color:var(--text-muted); text-transform:uppercase;">[${item.type || 'Item'}]</span>
+                        <p>${item.desc}</p>
+                    </div>
+                </div>
+                <div class="shop-buy">
+                    <span class="shop-price">${item.price}g</span>
+                    <button class="menu-btn btn-buy" style="width: auto; padding: 0.4rem 1rem; margin:0; font-size:1.2rem; ${isDisabled ? 'opacity:0.4; cursor:not-allowed;' : ''}" ${isDisabled ? 'disabled' : ''}>${btnText}</button>
+                </div>
+            `;
+            
+            TooltipUI.bind(row, item, player);
+
+            if (!isDisabled) {
+                row.querySelector('.btn-buy').onclick = () => {
+                    SFX.playGold();
+                    player.vitals.gold -= item.price;
+                    item.stock--;
+                    
+                    player.endgameProgress.ice.stats.itemsBought++;
+                    if (this.callbacks.checkAchievements) this.callbacks.checkAchievements();
+
+                    if (item.invType === 'consumable') {
+                        if (item.id === 'cons_ration') player.vitals.rations = Math.min(20, player.vitals.rations + 1);
+                        else player.inventory.push(item); // e.g. Repair Kits
+                    } else if (item.invType === 'part') {
+                        player.reagents.push({ ...item }); 
+                    } else {
+                        // --- FIX: Force the invType tag before pushing to Cargo! ---
+                        targetItem.invType = targetItem.invType || item.type;
+                        player.inventory.push(targetItem);
+                    }
+
+                    TooltipUI.hide(); 
+                    this.renderVault(container); 
+                };
+            }
+            list.appendChild(row);
+        });
+    },
+
+    renderAlistair(container) {
+        container.innerHTML = `
+            <div style="display:flex; justify-content:space-between; align-items:baseline; border-bottom: 2px solid #A855F7; padding-bottom: 0.5rem; margin-bottom: 1rem;">
+                <h2 style="margin:0; color:#A855F7; font-size: 1.8rem;">Archmage Alistair</h2>
+            </div>
+            <p style="color:var(--text-main); font-size: 1.25rem; line-height:1.5;">Alistair is a Tiefling scholar whose horns trace orbital alignment pathways. He seeks to map the tear-lines of the Abyssal Trench, believing that the Void Whirlpools are dimensional portals waiting to be stabilized.</p>
+            <p style="color:var(--text-muted); font-size: 1.15rem; line-height:1.5;"><i>"Gold holds no weight against the gravity of the unknown, angler. Align my telemetry arrays, and the secrets of deep space will be Yours."</i></p>
+        `;
+    },
+
+    renderTelemetry(container) {
+        const player = this.gameState.player;
+        const abyssal = player.endgameProgress.abyssal;
+        const entered = abyssal.whirlpoolsEntered || 0;
+        const freed = abyssal.abolethFreed || false;
+        
+        const pct = Math.min(100, (entered / 5) * 100);
+
+        let rewardHtml = "";
+        // Reward Claim Section
+        if (freed && !abyssal.hasSingularityRegulator) {
+            rewardHtml = `
+                <div style="margin-top: 1.5rem; text-align: center; border-top: 1px solid var(--panel-border); padding-top: 1.5rem;">
+                    <h3 style="color:#A855F7; margin:0 0 1rem 0; font-size:1.4rem;">Pact Fulfilled</h3>
+                    <button class="menu-btn" id="btn-claim-singularity" style="width:auto; padding: 0.5rem 2rem; margin:0; border-color:var(--gold-warn); color:var(--gold-warn);">Claim Quest Rewards</button>
+                </div>
+            `;
+        } else if (abyssal.hasSingularityRegulator) {
+            rewardHtml = `
+                <div style="margin-top: 1.5rem; text-align: center; border-top: 1px solid var(--panel-border); padding-top: 1.5rem; color: var(--green-safe); font-weight: bold; font-size: 1.2rem;">
+                    ✓ Void Rift Saga Complete. Singularity Regulator Installed.
+                </div>
+            `;
+        }
+
+        container.innerHTML = `
+            <div style="display:flex; justify-content:space-between; align-items:baseline; border-bottom: 2px solid #A855F7; padding-bottom: 0.5rem; margin-bottom: 1rem;">
+                <h2 style="margin:0; color:#A855F7; font-size: 1.8rem;">Vortex Telemetry</h2>
+                <div style="font-size: 1.2rem; color:var(--text-muted);">Breaches Entered: <b style="color:var(--cyan-glow);">${entered} / 5</b></div>
+            </div>
+
+            <div style="background: var(--bg-void); border: 1px solid var(--panel-border); padding: 1.5rem; border-radius: 6px; margin-bottom: 1.5rem;">
+                <div style="display:flex; justify-content:space-between; font-size: 1.2rem; margin-bottom: 0.5rem;">
+                    <span style="color:var(--text-main);">Planar Shear Saturation:</span>
+                    <span style="color:#A855F7; font-weight:bold;">${entered === 5 ? 'SINGULARITY' : `${pct}%`}</span>
+                </div>
+                <div style="width:100%; height:12px; background:#000; border:1px solid var(--panel-border); border-radius:6px; overflow:hidden;">
+                    <div style="height:100%; width:${pct}%; background:#A855F7; transition: width 0.4s;"></div>
+                </div>
+                <div style="margin-top: 1rem; color:var(--text-muted); font-size: 1.1rem; text-align: center;">
+                    ${freed ? "The Aboleth is free." : (entered === 5 ? "Veil ruptured. Navigate through the fifth portal into the Astral Sea!" : "Breach active Void Whirlpools on the normal map to saturate the sensors.")}
+                </div>
+            </div>
+            ${rewardHtml}
+        `;
+
+        const btnClaim = document.getElementById('btn-claim-singularity');
+        if (btnClaim) {
+            btnClaim.onclick = () => {
+                SFX.playCatchSuccess();
+                abyssal.hasSingularityRegulator = true;
+                
+                // Grant rewards
+                // 1. Boat Upgrade: Singularity Regulator
+                player.inventory.push({
+                    id: 'upg_singularity_regulator',
+                    name: 'Singularity Regulator',
+                    slot: 'engine',
+                    type: 'upgrade',
+                    invType: 'upgrade',
+                    basePrice: 0,
+                    desc: 'An advanced arcane instrument that stabilizes dimensional tears. Allows the vessel to safely breach active Void Whirlpools, materializing in randomized sectors of the Astral Sea.',
+                    imageDataUrl: '' // Rehydrator will generate the art
+                });
+
+                // 2. Mythic Lure: Singularity Hook
+                player.inventory.push({
+                    id: 'lure_singularity_hook',
+                    invType: 'lure',
+                    name: 'The Singularity Hook',
+                    stats: { color: -100, sound: -100, light: 100, weight: 100 },
+                    durability: -1,
+                    maxDurability: -1,
+                    componentsUsed: 5,
+                    basePrice: 0,
+                    seed: Math.floor(Math.random() * 999999),
+                    components: ['lead_sinker', 'bone_dust', 'myconid_spore']
+                });
+
+                // Force rehydrate the newly rewarded items to draw their pixel art
+                import('../util/art_rehydrator.js').then(mod => {
+                    mod.ArtRehydrator.rehydratePlayer(player);
+                    this.renderTelemetry(container);
+                    this.triggerTabDialogue();
+                });
+
+                if (this.callbacks.onSave) this.callbacks.onSave();
+            };
         }
     },
 // ==========================================

@@ -349,6 +349,277 @@ export function generateMythicLure(options = {}) {
     }
 
     // ==========================================
+    // MYTHIC LURE 4: THE GLACIAL HOOK
+    // ==========================================
+    else if (lureId === 'glacial_hook') {
+        const cx = 32;
+        let cy = 16;
+        
+        const cSilk = '#F8FAFC';      // White silk line
+        const cIceDark = '#0284C7';   // Deep blue ice shadow
+        const cIceMid = '#38BDF8';    // Mid ice
+        const cIceLight = '#BAE6FD';  // Bright frost
+        const cIceCore = '#075985';   // Internal frozen shadow
+        const cSnow = '#FFFFFF';      // Pure snow
+        const cHook = '#94A3B8';      // Frozen steel
+        const cHookShad = '#334155';
+        
+        // 1. Silk Line (Taut and frozen straight)
+        for (let y = 0; y < 12; y++) {
+            setPixel(cx, y, cSilk);
+            if (rng.chance(0.3)) setPixel(cx - 1, y, cIceLight); // Frost building on the line
+        }
+
+        // 2. The Translucent Ice Cube (Weight)
+        // We build a distinct isometric hexagon to simulate a 3D translucent cube
+        const bY = 20;
+        const cubeR = 9;
+        for (let y = -cubeR; y <= cubeR; y++) {
+            const w = cubeR - Math.floor(Math.abs(y) * 0.5); 
+            for (let x = -w; x <= w; x++) {
+                let c = cIceMid;
+                
+                // Isometric Faces
+                if (y < -cubeR * 0.3) c = cIceLight; // Top face catching light
+                else if (x < 0) c = cIceMid;         // Left face
+                else c = cIceDark;                   // Right face in shadow
+                
+                // Translucency: Darker inner core visible through the ice
+                if (Math.abs(x) <= 3 && y > -cubeR * 0.2 && y < cubeR * 0.6) {
+                    c = cIceCore;
+                    // Draw the faint shadow of the metal hook passing through the center
+                    if (x === 0 || x === 1) c = cHookShad;
+                }
+                
+                // Crystalline Edges & Fractures
+                if (x === -w || x === w || y === cubeR || (x === 0 && y >= -cubeR * 0.3)) {
+                    c = cIceLight; // Catching light on the sharp geometric corners
+                }
+                
+                // Internal stress fractures
+                if ((x * y) % 11 === 0 && y > 0) c = cSnow;
+
+                // Snow accumulation heavily packed on the top surfaces
+                if (y < -cubeR * 0.6 || (y < -cubeR * 0.2 && rng.chance(0.5)) || (y === -cubeR * 0.3 && x === 0)) {
+                    c = cSnow;
+                }
+
+                setPixel(cx + x, bY + y, c);
+            }
+        }
+        
+        // 3. Frozen Metal Shank
+        const shankEnd = 45;
+        for (let y = Math.floor(bY + cubeR); y <= shankEnd; y++) {
+            setPixel(cx, y, cHook);
+            setPixel(cx + 1, y, cHookShad);
+            
+            // Thick rime ice clinging to the metal
+            if (rng.chance(0.6)) setPixel(cx - 1, y, cIceLight);
+            if (rng.chance(0.3)) setPixel(cx - 2, y, cSnow);
+        }
+
+        // 4. The Angular Crystalline Barb
+        // Uses sharp, geometric lines instead of a smooth curve
+        const drawIceShard = (x, y, c) => {
+            forcePixel(x, y, c);
+            forcePixel(x, y - 1, cIceLight);
+            forcePixel(x + 1, y, cIceDark);
+        };
+
+        // Segment 1: Down and Left
+        for (let i = 0; i <= 4; i++) {
+            drawIceShard(cx - i, shankEnd + Math.floor(i * 0.5), cHook);
+            forcePixel(cx - i, shankEnd + Math.floor(i * 0.5) + 1, cIceDark); // Thick ice encasement
+        }
+        // Segment 2: Flat Left
+        for (let i = 5; i <= 8; i++) {
+            drawIceShard(cx - i, shankEnd + 2, cHook);
+            forcePixel(cx - i, shankEnd + 3, cIceDark);
+        }
+        // Segment 3: Sharp Upward Spike
+        for (let i = 0; i <= 6; i++) {
+            forcePixel(cx - 8, shankEnd + 2 - i, cIceMid);
+            forcePixel(cx - 9, shankEnd + 2 - i, cIceLight);
+            forcePixel(cx - 7, shankEnd + 2 - i, cIceDark);
+            
+            // The metal core stops early, the rest is pure sharp ice
+            if (i < 3) forcePixel(cx - 8, shankEnd + 2 - i, cHook); 
+        }
+        
+        // Piercing Tip
+        forcePixel(cx - 9, shankEnd - 5, cSnow);
+        forcePixel(cx - 8, shankEnd - 6, cSnow);
+
+        // 5. Frost Aura (Vaporizing cold air)
+        for (let i = 0; i < 40; i++) {
+            const bx = cx + rng.int(-22, 22);
+            const by = bY + rng.int(-15, 35);
+            if (!grid[by][bx]) {
+                const particleColor = rng.chance(0.4) ? cSnow : (rng.chance(0.5) ? cIceLight : cIceMid);
+                setPixel(bx, by, particleColor);
+            }
+        }
+    }
+    
+    // ==========================================
+    // MYTHIC LURE 5: THE SINGULARITY HOOK
+    // ==========================================
+    else if (lureId === 'singularity_hook') {
+        const cx = 32;
+        let cy = 16;
+        
+        const cLine = '#A855F7';      // Violet energy thread
+        const cShank = '#020617';     // Absolute black obsidian
+        const cShankHigh = '#1E1B4B'; // Indigo glare
+        const cGlow = '#C084FC';      // Lavender gravity ripples
+        const cWhite = '#FFFFFF';     // White-hot core
+        const cCyan = '#22D3EE';      // Cyan starlight
+
+        // 1. BRAIDED CELESTIAL LINE
+        const lineYEnd = 16;
+        for (let y = 0; y < lineYEnd; y++) {
+            const wave1 = Math.round(Math.sin(y * 0.8) * 1.5);
+            const wave2 = Math.round(Math.cos(y * 0.8) * 1.5);
+            setPixel(cx + wave1, y, cLine);
+            setPixel(cx + wave2, y, '#FBBF24'); // Interwoven gold
+            setPixel(cx + Math.round((wave1 + wave2)/2), y, cShank); // Core line
+        }
+        
+        // Detailed Gold-Banded Stone Eyelet
+        for (let dy = -2; dy <= 2; dy++) {
+            for (let dx = -3; dx <= 3; dx++) {
+                if (Math.hypot(dx, dy) <= 3 && Math.hypot(dx, dy) >= 1.2) {
+                    setPixel(cx + dx, lineYEnd + dy, cShankHigh);
+                    if (dx === 0 || dy === 0) setPixel(cx + dx, lineYEnd + dy, '#FBBF24'); // Gold bands
+                }
+            }
+        }
+
+        // 2. CONCENTRIC ELLIPTICAL GRAVITY RIPPLES
+        // These draw on the background layers before the core and shank are placed on top
+        const rippleCount = 3;
+        const ripplePals = ['rgba(34, 211, 238, 0.45)', 'rgba(168, 85, 247, 0.3)', 'rgba(192, 132, 252, 0.15)'];
+        const coreY = 24;
+        
+        for (let rIdx = 0; rIdx < rippleCount; rIdx++) {
+            const rX = 14 + rIdx * 6;
+            const rY = 8 + rIdx * 3;
+            const rColor = ripplePals[rIdx];
+            
+            for (let a = 0; a < 360; a += 8) {
+                const rad = a * Math.PI / 180;
+                // Add minor wave distortion to represent gravitational warps
+                const warp = Math.sin(a * 6 * (Math.PI / 180)) * 1.5;
+                const rx = Math.round(cx + Math.cos(rad) * (rX + warp));
+                const ry = Math.round(coreY + Math.sin(rad) * (rY + warp));
+                
+                if (rx >= 0 && rx < GRID_SIZE && ry >= 0 && ry < GRID_SIZE) {
+                    setPixel(rx, ry, rColor);
+                }
+            }
+        }
+
+        // 3. THE CLOCKWORK GYROSCOPE SINGULARITY (Weight)
+        const coreR = 8;
+        // Inner Swirling Black Hole
+        for (let y = -coreR; y <= coreR; y++) {
+            const w = Math.floor(coreR * Math.sqrt(1 - (y*y)/(coreR*coreR || 1)));
+            for (let x = -w; x <= w; x++) {
+                let c = cShankHigh;
+                if (x === 0 && y === 0) c = cWhite; // Singularity spark
+                else if (Math.abs(x) <= 2 && Math.abs(y) <= 2) c = cCyan; // Cyan accretion disk
+                else if ((x + y) % 3 === 0) c = cLine; // Swirling gravity arms
+                else if ((x - y) % 4 === 0) c = cShad_dummy(); // Void gaps
+                setPixel(cx + x, coreY + y, c);
+            }
+        }
+        function cShad_dummy() { return '#020617'; }
+
+        // Outer Gyroscope Cage (Gold & Steel)
+        for (let a = 0; a < 360; a += 15) {
+            const rad = a * Math.PI / 180;
+            const rx1 = Math.round(cx + Math.cos(rad) * (coreR + 1));
+            const ry1 = Math.round(coreY + Math.sin(rad) * (coreR + 1));
+            setPixel(rx1, ry1, '#FBBF24'); // Outer Gold Ring
+            
+            const rx2 = Math.round(cx + Math.cos(rad) * (coreR - 2));
+            const ry2 = Math.round(coreY + Math.sin(rad) * (coreR - 2));
+            setPixel(rx2, ry2, '#94A3B8'); // Inner Steel Ring
+        }
+
+        // 4. THE JAGGED ENERGY-INFUSED SHANK
+        const shankStart = coreY + coreR + 1;
+        const shankEnd = 46;
+        for (let y = shankStart; y <= shankEnd; y++) {
+            const jg = Math.round(Math.sin(y * 0.45) * 0.6); // Jagged shear offset
+            
+            // Obsidian shell
+            setPixel(cx + jg - 1, y, cShank);
+            setPixel(cx + jg, y, cShankHigh);
+            setPixel(cx + jg + 1, y, cShank);
+            
+            // Glowing energy leaks
+            if (y % 4 === 0) {
+                forcePixel(cx + jg, y, cCyan); // Cyan light bleed
+                forcePixel(cx + jg - 1, y, cLine);
+            } else if (y % 4 === 2) {
+                forcePixel(cx + jg, y, cGlow);  // Lavender light bleed
+            }
+        }
+
+        // 5. THE CRYSTALLIZED VOID SICKLE (Hook Curve)
+        const hookP0 = { x: cx, y: shankEnd };
+        const hookP1 = { x: cx - 18, y: shankEnd + 8 }; // Far left curve
+        const hookP2 = { x: cx - 12, y: shankEnd - 6 }; // Sweeping up to the tip
+
+        const hSteps = 28;
+        for (let i = 0; i <= hSteps; i++) {
+            const t = i / hSteps;
+            const hx = Math.round(Math.pow(1-t, 2)*hookP0.x + 2*(1-t)*t*hookP1.x + Math.pow(t, 2)*hookP2.x);
+            const hy = Math.round(Math.pow(1-t, 2)*hookP0.y + 2*(1-t)*t*hookP1.y + Math.pow(t, 2)*hookP2.y);
+            
+            const r = Math.max(1.0, 3.5 * (1.0 - t * 0.7)); // Tapering hook blade thickness
+
+            for (let dy = -Math.ceil(r); dy <= Math.ceil(r); dy++) {
+                const hw = Math.floor(Math.sqrt(r*r - dy*dy));
+                for (let dx = -hw; dx <= hw; dx++) {
+                    let c = cShank;
+                    if (dy < 0) c = cShankHigh; // Base shading
+                    if (dx === -hw && dy === -Math.ceil(r) + 1) c = cCyan; // Glowing cutting edge
+                    
+                    forcePixel(hx + dx, hy + dy, c);
+                }
+            }
+
+            // High-intensity star flash at the barb tip
+            if (i === hSteps) {
+                forcePixel(hx, hy, cWhite);
+                forcePixel(hx - 1, hy, cCyan);
+                forcePixel(hx + 1, hy, cCyan);
+                forcePixel(hx, hy - 1, cCyan);
+                forcePixel(hx, hy + 1, cCyan);
+            }
+        }
+
+        // 6. THE EVENT HORIZON SINK (Localized Black Hole)
+        // Positioned at the apex curve of the hook
+        const voidX = Math.round(Math.pow(0.5, 2)*hookP0.x + 2*0.5*0.5*hookP1.x + Math.pow(0.5, 2)*hookP2.x);
+        const voidY = Math.round(Math.pow(0.5, 2)*hookP0.y + 2*0.5*0.5*hookP1.y + Math.pow(0.5, 2)*hookP2.y);
+        const voidR = 4;
+        
+        for (let dy = -voidR; dy <= voidR; dy++) {
+            const vw = Math.floor(voidR * Math.sqrt(1 - (dy*dy)/(voidR*voidR || 1)));
+            for (let dx = -vw; dx <= vw; dx++) {
+                forcePixel(voidX + dx, voidY + dy, '#000000'); // Pure void core
+                if (Math.abs(dx) === vw || Math.abs(dy) === voidR) {
+                    forcePixel(voidX + dx, voidY + dy, 'rgba(168, 85, 247, 0.45)'); // Lavender distortion boundary
+                }
+            }
+        }
+    }
+    
+    // ==========================================
     // OUTLINE & RENDER
     // ==========================================
     const outlineGrid = Array(GRID_SIZE).fill(null).map(() => Array(GRID_SIZE).fill(null));

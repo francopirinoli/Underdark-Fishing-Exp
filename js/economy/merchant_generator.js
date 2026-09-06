@@ -11,7 +11,8 @@ import { generateLurePart } from '../art/lure_generator.js';
 import { generateConsumable } from '../art/consumable_generator.js';
 import { AlchemyCrafter } from '../fishing/alchemy_crafter.js';
 import { LureCrafter } from '../fishing/lure_crafter.js';
-import { generateUpgrade } from '../art/upgrade_generator.js'; // <-- ADD THIS LINE
+import { generateUpgrade } from '../art/upgrade_generator.js'; 
+import { generateMythicLure } from '../art/mythic_lure_generator.js';
 
 // --- INVENTORY DATABASES ---
 const CONSUMABLES = [
@@ -235,6 +236,113 @@ export const MerchantGenerator = {
             ...this.getFishmongerStock(seed + 1, biomeId, playerBarterLevel),
             ...this.getBoatwrightStock(seed + 2, biomeId, playerBarterLevel)
         ];
+    },
+
+    // --- 5. THE ANGLERS CLUB VAULT (ENDGAME POI) ---
+    getClubShopStock(seed, clubRank, player = null) { // <-- FIX: Added player parameter
+        const rng = createRng(seed);
+        const inventory = [];
+        
+        // Convert rank string to a numeric tier for easy logic (D=1, C=2, B=3, A=4, S=5)
+        const rankTier = { 'Rank D': 1, 'Rank C': 2, 'Rank B': 3, 'Rank A': 4, 'Rank S': 5 }[clubRank] || 1;
+        
+        // No markup in the club shop, prices are flat
+        const buyMult = 1.0; 
+
+        // Rank D+ (Tier 1) - Basic Consumables at a discount
+        const ration = this._formatStoreItem(CONSUMABLES.find(c => c.id === 'cons_ration'), 99, 0.8, rng);
+        ration.imageDataUrl = generateConsumable({ id: 'cons_ration', rng: createRng(seed) }).imageDataUrl;
+        ration.invType = 'consumable';
+        inventory.push(ration);
+
+        // Rank C+ (Tier 2) - Advanced Repairs
+        if (rankTier >= 2) {
+            const hKit = this._formatStoreItem(CONSUMABLES.find(c => c.id === 'cons_repair_kit'), 99, 0.9, rng);
+            hKit.name = "High-Grade Repair Kit";
+            hKit.desc = "Restores 50 HP to your boat in the field.";
+            hKit.basePrice = 80;
+            hKit.price = 72; // 10% discount
+            hKit.imageDataUrl = generateConsumable({ id: 'cons_repair_kit', rng: createRng(seed+1) }).imageDataUrl;
+            hKit.invType = 'consumable';
+            inventory.push(hKit);
+        }
+
+        // Rank B+ (Tier 3) - Raw Rare Materials
+        if (rankTier >= 3) {
+            const rareParts = LURE_PARTS_POOL.filter(p => p.rarity === 'Rare');
+            rareParts.forEach((part, i) => {
+                const formattedPart = this._formatStoreItem(part, rng.int(2, 5), buyMult, rng);
+                formattedPart.stats = { color: rng.int(-20, 20), sound: rng.int(-20, 20), light: rng.int(-20, 20), weight: rng.int(-20, 20) };
+                formattedPart.imageDataUrl = generateLurePart({ visualId: part.visualId, rng: createRng(seed+i) });
+                formattedPart.type = 'part';
+                formattedPart.invType = 'part';
+                inventory.push(formattedPart);
+            });
+        }
+
+        // Rank A+ (Tier 4) - Legendary Rods
+        if (rankTier >= 4) {
+            let attempts = 0;
+            let rod;
+            do {
+                rod = generateRodData({ seed: rng.next() * 100000 });
+                attempts++;
+            } while (rod.identity.rarity !== 'Legendary' && attempts < 50);
+            
+            if (rod.identity.rarity === 'Legendary') {
+                rod.invType = 'rod'; // <-- FIX: Explicitly tag the rod so it doesn't break in the UI
+                inventory.push({
+                    id: rod.id, name: rod.identity.name, type: 'rod', itemData: rod,
+                    price: rod.economy.value, stock: 1, desc: `Power: ${rod.stats.power}x | Tension: ${rod.stats.maxTension}`
+                });
+            }
+        }
+
+        // Rank S (Tier 5) - The Mythic Lure & Masterwork Upgrades
+        if (rankTier >= 5) {
+            let bossCaught = false;
+            let hasHook = false;
+
+            if (player) {
+                // Check if the boss is already defeated
+                if (player.bestiary && player.bestiary['glacial_leviathan']) {
+                    bossCaught = player.bestiary['glacial_leviathan'].caught > 0;
+                }
+                
+                // Check active gear and cargo hold
+                hasHook = player.inventory.some(i => i.id === 'lure_glacial_hook') || 
+                          (player.gear.lure && player.gear.lure.id === 'lure_glacial_hook');
+                
+                // Deep-check all safehouse stashes just in case they hid it in a warehouse
+                if (!hasHook && player.safehouses) {
+                    for (const key in player.safehouses) {
+                        if (player.safehouses[key].stash.some(i => i.id === 'lure_glacial_hook')) {
+                            hasHook = true;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // Only spawn the Mythic Lure if they haven't caught the boss and don't already own it
+            if (!bossCaught && !hasHook) {
+                const mythicLure = {
+                    id: `lure_glacial_hook`, invType: 'lure', name: 'The Glacial Hook',
+                    stats: { color: -90, sound: -70, light: -80, weight: 90 },
+                    durability: -1, maxDurability: -1, componentsUsed: 5, basePrice: 5000,
+                    seed: rng.int(10000, 99999), components: ['iron_sinker', 'bone_dust', 'jelly_bell']
+                };
+                
+                mythicLure.imageDataUrl = generateMythicLure({ lureId: 'glacial_hook', rng: createRng(mythicLure.seed) }).imageDataUrl; 
+                
+                inventory.push({
+                    id: mythicLure.id, name: mythicLure.name, type: 'lure', itemData: mythicLure,
+                    price: 5000, stock: 1, desc: "A hook encased in eternal ice. Breaks upon catching the Glacial Leviathan."
+                });
+            }
+        }
+
+        return inventory;
     },
 
     // --- INTERNAL HELPERS ---

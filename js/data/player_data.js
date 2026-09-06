@@ -99,8 +99,38 @@ export const PlayerEngine = {
             endgameProgress: {
                 fungal: { totalCompostKg: 0, currentGoalIdx: 0 },
                 crystal: { filledSlots: {}, curatorRating: 0, currentGoalIdx: 0 },
-                // --- NEW: Volcanic Arena Progress ---
-                lava: { currentTier: 1, endlessScore: 0, roster: [null, null, null] } // 0: Front, 1: Middle, 2: Back
+                lava: { currentTier: 1, endlessScore: 0, roster: [null, null, null] },
+                abyssal: { whirlpoolsEntered: 0, abolethFreed: false, hasSingularityRegulator: false, activeAstralMap: null, questStarted: false }, // Updated
+                
+                // --- NEW: Anglers Club Progress (Ice) ---
+                ice: {
+                    clubPoints: 0,
+                    clubRank: 'Rank D', // Rank D, C, B, A, S
+                    unlockedAchievements: [],
+                    stats: {
+                        totalFishCaught: 0,
+                        rareFishCaught: 0,
+                        legendaryFishCaught: 0,
+                        bossFishCaught: 0,
+                        deepseaCaught: 0,
+                        jellyfishCaught: 0,
+                        predatorCaught: 0,
+                        eelCaught: 0,
+                        heaviestCatch: 0,
+                        heaviestRay: 0,
+                        luresCrafted: 0,
+                        potionsBrewed: 0,
+                        baitsMashed: 0,
+                        fishDissected: 0,
+                        goldEarned: 0,
+                        mostExpensiveFishSold: 0,
+                        itemsBought: 0,
+                        whirlpoolsEscaped: 0,
+                        packIceBroken: 0,
+                        lavaTimeSurvived: 0,
+                        tournamentsWon: 0
+                    }
+                }
             },
             gear: {
                 boat: starterBoat,
